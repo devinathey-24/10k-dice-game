@@ -512,7 +512,7 @@
         }
 
         #scorecard-container { width: 100%; display: flex; flex-direction: column; }
-        .paper-row { width: 100%; display: flex; flex-direction: row; }
+        .paper-row { width: 100%; display: flex; flex-direction: row; flex-shrink: 0; }
         .paper-col { flex: 1; display: flex; flex-direction: column; align-items: center; opacity: 0.35; transition: opacity 0.3s ease; }
         .paper-col.active-player { opacity: 1; }
 
@@ -535,14 +535,25 @@
         }
 
         .score-history { display: flex; flex-direction: column; align-items: center; width: 100%; flex-grow: 1; }
-        .history-item { font-family: 'Covered By Your Grace', cursive; font-size: 2rem; color: var(--pen-color); height: 40px; line-height: 40px; margin: 0; }
+        .history-item { font-family: 'Covered By Your Grace', cursive; font-size: 2rem; color: var(--pen-color); height: 40px; line-height: 40px; margin: 0; flex-shrink: 0; }
         .history-item.bust { color: #d13434; font-style: italic; opacity: 0.8; }
         
-        .penned-label, .unpenned-label { font-family: 'Kalam', cursive; font-size: 1.3rem; color: var(--pen-color); height: 40px; line-height: 40px; margin: 0; }
-        .unpenned-label { color: var(--pencil-color); margin-top: 40px; }
-        .total-penned { font-family: 'Covered By Your Grace', cursive; font-size: 3.5rem; font-weight: bold; color: var(--pen-color); text-align: center; height: 80px; line-height: 80px; margin: 0; }
-        .turn-unpenned { font-family: 'Covered By Your Grace', cursive; font-size: 2.5rem; color: var(--pencil-color); text-align: center; height: 40px; line-height: 40px; margin: 0; }
-
+        .penned-label, .unpenned-label { 
+            font-family: 'Kalam', cursive; 
+            font-size: 1.3rem; 
+            color: var(--pen-color); 
+            min-height: 40px; 
+            height: auto; 
+            line-height: 1.2; 
+            margin: 0; 
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .unpenned-label { color: var(--pencil-color); margin-top: 30px; }
+        .total-penned { font-family: 'Covered By Your Grace', cursive; font-size: 3.5rem; font-weight: bold; color: var(--pen-color); text-align: center; min-height: 70px; height: auto; line-height: 1; margin: 0; }
+        .turn-unpenned { font-family: 'Covered By Your Grace', cursive; font-size: 2.5rem; color: var(--pencil-color); text-align: center; min-height: 40px; height: auto; line-height: 1; margin: 0; }
 
         /* --- HOME / PLAY NOW / MULTIPLAYER MENUS --- */
         #menu-screen {
@@ -898,7 +909,9 @@
 
         <div class="controls">
             <button id="roll-btn" class="action-btn" disabled>Roll Dice</button>
+            <button id="bank-all-btn" class="action-btn" disabled style="background-color: #8e44ad; color: white;">Bank All</button>
             <button id="bank-btn" class="action-btn" disabled>Bank Score</button>
+            <button id="play-again-btn" class="action-btn hidden" style="background-color: #3498db; color: white;">Play Again</button>
         </div>
     </div>
 
@@ -978,6 +991,7 @@
         const container = document.getElementById('dice-container');
         const rollBtn = document.getElementById('roll-btn');
         const bankBtn = document.getElementById('bank-btn');
+        const bankAllBtn = document.getElementById('bank-all-btn'); 
         const msgEl = document.getElementById('message');
         const toggleScoreBtn = document.getElementById('toggle-score-btn');
         const scorecardPanel = document.getElementById('scorecard-panel');
@@ -1232,6 +1246,8 @@
 
         rollBtn.onclick = () => { socket.emit('roll-dice'); };
         bankBtn.onclick = () => { socket.emit('bank-score'); };
+        bankAllBtn.onclick = () => { socket.emit('bank-all'); }; 
+        document.getElementById('play-again-btn').onclick = () => { socket.emit('play-again'); };
 
         function initDice() {
             if (sceneElements.length > 0) return;
@@ -1482,30 +1498,50 @@
                 });
             }
 
-            if (state.status === 'PLAYING' && state.playersData[state.currentPlayer].type === 'human' && isMyTurn) {
-                let p = state.playersData[state.currentPlayer];
-                let potential = state.turnScore + state.currentRollScore;
-                
-                if (state.currentRollScore > 0) {
-                    rollBtn.disabled = false;
-                    if (!p.isOnBoard && potential < 1000) {
-                        bankBtn.disabled = true;
-                        msgEl.style.color = "#FFD700";
+            // --- NEW BUTTON DISPLAY LOGIC ---
+            const playAgainBtn = document.getElementById('play-again-btn');
+
+            if (state.status === 'GAME_OVER') {
+                rollBtn.classList.add('hidden');
+                bankBtn.classList.add('hidden');
+                bankAllBtn.classList.add('hidden');
+                playAgainBtn.classList.remove('hidden');
+            } else {
+                rollBtn.classList.remove('hidden');
+                bankBtn.classList.remove('hidden');
+                bankAllBtn.classList.remove('hidden');
+                playAgainBtn.classList.add('hidden');
+
+                if (state.status === 'PLAYING' && state.playersData[state.currentPlayer].type === 'human' && isMyTurn) {
+                    let p = state.playersData[state.currentPlayer];
+                    let potential = state.turnScore + state.currentRollScore;
+                    
+                    if (state.currentRollScore > 0) {
+                        rollBtn.disabled = false;
+                        if (!p.isOnBoard && potential < 1000) {
+                            bankBtn.disabled = true;
+                            msgEl.style.color = "#FFD700";
+                        } else {
+                            bankBtn.disabled = false;
+                        }
                     } else {
-                        bankBtn.disabled = false;
+                        rollBtn.disabled = true;
+                        bankBtn.disabled = true;
+                    }
+                    
+                    if (!state.hasRolledThisTurn) {
+                        rollBtn.disabled = false;
+                        bankBtn.disabled = true;
+                        bankAllBtn.disabled = true; 
+                    } else {
+                        // Enable Bank All as long as they have rolled this turn
+                        bankAllBtn.disabled = false; 
                     }
                 } else {
                     rollBtn.disabled = true;
                     bankBtn.disabled = true;
+                    bankAllBtn.disabled = true;
                 }
-                
-                if (!state.hasRolledThisTurn) {
-                    rollBtn.disabled = false;
-                    bankBtn.disabled = true;
-                }
-            } else {
-                rollBtn.disabled = true;
-                bankBtn.disabled = true;
             }
         }
 

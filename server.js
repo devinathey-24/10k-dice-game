@@ -689,6 +689,61 @@ io.on('connection', (socket) => {
         executeBank();
     });
 
+    // --- NEW BANK ALL LISTENER ---
+    socket.on('bank-all', () => {
+        if (!canControlCurrentPlayer(socket)) {
+            socket.emit('action-denied', 'It is not your turn.');
+            return;
+        }
+
+        // Fire the CPU logic to automatically hold all remaining point-yielding dice
+        holdCpuDice();
+
+        let p = gameState.playersData[gameState.currentPlayer];
+        let potentialTotal = gameState.turnScore + gameState.currentRollScore;
+
+        // Make sure there are actually points to bank
+        if (gameState.currentRollScore === 0) {
+            socket.emit('action-denied', 'No scoring dice available to bank!');
+            return;
+        }
+
+        // Make sure they meet the 1000 point requirement if they aren't on the board
+        if (!p.isOnBoard && potentialTotal < 1000) {
+            socket.emit('action-denied', `You need 1,000 points to get on the board. You only have ${potentialTotal}.`);
+            return;
+        }
+
+        executeBank();
+    });
+    // -----------------------------
+
+    // --- NEW PLAY AGAIN LISTENER ---
+    socket.on('play-again', () => {
+        if (gameState.status !== 'GAME_OVER') return;
+
+        gameState.playersData.forEach(p => {
+            p.totalScore = 0;
+            p.isOnBoard = false;
+            p.consecutiveBusts = 0;
+        });
+
+        gameState.status = 'PLAYING';
+        gameState.currentPlayer = 0;
+        gameState.turnScore = 0;
+        gameState.currentRollScore = 0;
+        gameState.isLastTurn = false;
+        gameState.playerWhoStartedLastTurn = -1;
+        gameState.hasRolledThisTurn = false;
+        gameState.diceValues = [1, 1, 1, 1, 1, 1];
+        gameState.lockedDice.fill(false);
+        gameState.heldDice.fill(false);
+        gameState.message = `${gameState.playersData[0].name}'s turn! Roll the dice.`;
+
+        io.emit('sync-state', gameState);
+        triggerCpuTurn(); 
+    });
+
     socket.on('disconnect', () => {
         if (gameState.status === 'SETUP') {
             removeFromLobby(socket);
