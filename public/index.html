@@ -1,0 +1,1588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>10,000 Dice Game - Multiplayer</title>
+    <!-- MENU FIX V2 -->
+    <link href="https://fonts.googleapis.com/css2?family=Covered+By+Your+Grace&family=Kalam:wght@400;700&family=Pacifico&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --text-color: #f1c40f; 
+            --dice-bg: #f9f9f9;
+            --dice-held: #0f3460;
+            
+            --pen-color: #1a4da6;
+            --pencil-color: #555555;
+            --paper-bg: #fdfdf8;
+            --paper-line-blue: #b3d4fc;
+            --paper-line-red: #ff9999;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #111; 
+            color: white;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* --- MENU OVERLAY --- */
+        #menu-screen {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(circle at center, rgba(46, 107, 69, 0.95) 0%, rgba(6, 23, 13, 0.98) 100%);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .menu-box {
+            background: #fff;
+            color: #333;
+            padding: 40px 60px;
+            border-radius: 16px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.8);
+            text-align: center;
+            min-width: 450px;
+            max-width: 90vw;
+        }
+
+        .menu-box h1 {
+            color: var(--pen-color);
+            font-family: 'Pacifico', cursive;
+            margin-top: 0;
+            font-size: 3.5rem;
+            text-shadow: none;
+            margin-bottom: 30px;
+        }
+
+        .menu-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            gap: 20px;
+        }
+        
+        .menu-row .inputs {
+            display: flex;
+            gap: 10px;
+        }
+
+        select, input[type="text"] {
+            padding: 10px 15px;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            border: 2px solid #ccc;
+            font-family: inherit;
+        }
+        
+        input[type="text"] { width: 140px; }
+        select { cursor: pointer; }
+
+        #start-btn {
+            background-color: var(--pen-color);
+            color: white;
+            width: 100%;
+            margin-top: 20px;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+
+        #start-btn:hover { background-color: #153a80; }
+
+        hr { border: 0; height: 1px; background: #ddd; margin: 30px 0; }
+
+        /* LEFT SIDE: CASINO GREEN FELT TABLE */
+        #game-board {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px;
+            box-sizing: border-box;
+            background: radial-gradient(circle at center, #2e6b45 0%, #133a23 70%, #06170d 100%);
+            box-shadow: inset 0 0 100px rgba(0,0,0,0.8);
+            border-right: 8px solid #2a1b15;
+            position: relative;
+        }
+
+
+        .hidden { display: none !important; }
+
+        /* --- MULTIPLAYER DEVICE / PLAYER PICKER --- */
+        #device-menu {
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(circle at center, rgba(46, 107, 69, 0.96) 0%, rgba(6, 23, 13, 0.985) 100%);
+            z-index: 95;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .device-menu-box {
+            width: min(520px, 92vw);
+            background: #fff;
+            color: #222;
+            border-radius: 18px;
+            padding: 30px;
+            box-sizing: border-box;
+            text-align: center;
+            box-shadow: 0 18px 55px rgba(0,0,0,0.75);
+        }
+
+        .device-menu-box h2 {
+            margin: 0 0 8px;
+            color: var(--pen-color);
+            font-family: 'Pacifico', cursive;
+            font-size: 2.4rem;
+        }
+
+        .device-menu-box p {
+            margin: 0 0 20px;
+            font-size: 1.05rem;
+            line-height: 1.4;
+            color: #555;
+        }
+
+        #device-player-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .player-join-btn, #spectator-btn {
+            width: 100%;
+            border: 0;
+            border-radius: 10px;
+            padding: 14px 16px;
+            font-size: 1.15rem;
+            font-weight: 800;
+            cursor: pointer;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.18);
+        }
+
+        .player-join-btn {
+            background: var(--pen-color);
+            color: #fff;
+        }
+
+        .player-join-btn:disabled {
+            background: #bbb;
+            color: #666;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .player-join-btn.mine {
+            background: #4CAF50;
+        }
+
+        #spectator-btn {
+            background: #e7e7e7;
+            color: #333;
+        }
+
+        #device-error {
+            min-height: 22px;
+            margin-top: 10px;
+            color: #d13434;
+            font-weight: 700;
+        }
+
+        #device-control {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 60;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #device-badge, #change-player-btn, #leave-game-btn {
+            border: none;
+            border-radius: 8px;
+            padding: 9px 12px;
+            font-size: 0.95rem;
+            font-weight: 800;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.45);
+        }
+
+        #device-badge {
+            background: rgba(0,0,0,0.55);
+            color: white;
+        }
+
+        #change-player-btn {
+            background: #fff;
+            color: var(--pen-color);
+            cursor: pointer;
+        }
+
+        #leave-game-btn {
+            background: #d13434;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        #leave-game-btn:active {
+            transform: translateY(1px);
+        }
+
+        .scene.device-disabled {
+            cursor: not-allowed;
+        }
+
+        #table-header {
+            color: var(--text-color);
+            font-size: 4rem;
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            text-shadow: 2px 4px 10px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        #message {
+            font-size: 1.8rem;
+            font-weight: bold;
+            height: 50px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: color 0.3s;
+            text-shadow: 1px 2px 5px rgba(0,0,0,0.8);
+            z-index: 10;
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            z-index: 10;
+            margin-bottom: 20px;
+        }
+
+        button.action-btn {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            transition: background-color 0.2s, opacity 0.2s, transform 0.1s;
+            text-transform: uppercase;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+        }
+
+        button.action-btn:active:not(:disabled) { transform: translateY(2px); }
+        #roll-btn { background-color: var(--text-color); color: #111; }
+        #bank-btn { background-color: #4CAF50; color: white; }
+        button.action-btn:hover { opacity: 0.9; }
+        button.action-btn:disabled { background-color: #555; color: #888; cursor: not-allowed; box-shadow: none; }
+
+        /* --- SCORECARD TOGGLE BUTTON (MOBILE ONLY) --- */
+        #toggle-score-btn {
+            display: none;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            background-color: var(--pen-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+            cursor: pointer;
+            z-index: 60;
+        }
+
+        /* --- 3D HYPER-REALISTIC DICE & SCATTER LOGIC --- */
+        #dice-container {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            margin-bottom: 30px;
+        }
+
+        #rack {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            pointer-events: none;
+        }
+
+        .rack-slot {
+            width: 80px;
+            height: 80px;
+            border: 2px solid rgba(0,0,0,0.2);
+            border-radius: 14px;
+            background: rgba(0, 0, 0, 0.08);
+            box-shadow: inset 2px 2px 6px rgba(0,0,0,0.4), inset -1px -1px 2px rgba(255,255,255,0.05);
+        }
+
+        .scene {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 80px;
+            height: 80px;
+            perspective: 800px;
+            cursor: pointer;
+            transform-origin: top left;
+            transition: top 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), left 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease, transform 0.2s ease;
+        }
+
+        .scene:active:not(.locked) .roll-wrapper { transform: scale(0.9); }
+        .scene.held .roll-wrapper { transform: translateY(-20px) scale(1.1); }
+        .scene.locked { opacity: 0.6; cursor: not-allowed; }
+        .scene.locked .roll-wrapper { transform: translateY(-20px); }
+
+        .roll-wrapper {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.2s ease;
+        }
+
+        .shadow {
+            position: absolute;
+            width: 64px;
+            height: 64px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 12px;
+            bottom: -15px;
+            left: 8px;
+            filter: blur(10px);
+            transform: translateZ(-40px) rotateX(10deg);
+            transition: all 0.3s ease;
+        }
+
+        .scene.held .shadow, .scene.locked .shadow {
+            transform: translateY(25px) translateZ(-40px) scale(0.8);
+            filter: blur(16px);
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .cube {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            transform-style: preserve-3d;
+            transition: transform 0.9s cubic-bezier(0.15, 0.85, 0.25, 1);
+        }
+
+        .cube-face {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            background: radial-gradient(circle at 30% 30%, #ffffff 0%, #e0e0e0 100%);
+            border: 1px solid #b0b0b0;
+            border-radius: 14px;
+            box-shadow: inset -4px -4px 10px rgba(0,0,0,0.15), inset 2px 2px 8px rgba(255,255,255,1);
+            transition: background 0.3s, border-color 0.3s;
+        }
+
+        .dot {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: radial-gradient(circle at 30% 30%, #444, #111);
+            border-radius: 50%;
+            box-shadow: inset 2px 2px 5px rgba(0,0,0,0.8), 0 1px 1px rgba(255,255,255,0.9);
+            transition: background 0.3s;
+        }
+
+        .scene.held .cube-face { 
+            background: radial-gradient(circle at 30% 30%, #164a84 0%, #0f3460 100%);
+            border-color: #f1c40f; 
+            box-shadow: inset -3px -3px 10px rgba(0,0,0,0.4), inset 2px 2px 6px rgba(255,255,255,0.2);
+        }
+        .scene.held .dot { 
+            background: radial-gradient(circle at 30% 30%, #fff, #d0d0d0);
+            box-shadow: inset 1px 1px 4px rgba(0,0,0,0.4), 0 1px 1px rgba(255,255,255,0.2);
+        }
+
+        .scene.locked .cube-face { 
+            background: radial-gradient(circle at 30% 30%, #1a2a40 0%, #0a1320 100%);
+            border-color: #444; 
+            box-shadow: inset -3px -3px 10px rgba(0,0,0,0.6), inset 2px 2px 6px rgba(255,255,255,0.1);
+        }
+        .scene.locked .dot { 
+            background: radial-gradient(circle at 30% 30%, #aaa, #888);
+            box-shadow: inset 1px 1px 4px rgba(0,0,0,0.6);
+        }
+
+        .center { top: 32px; left: 32px; }
+        .top-left { top: 12px; left: 12px; }
+        .top-right { top: 12px; right: 12px; }
+        .bottom-left { bottom: 12px; left: 12px; }
+        .bottom-right { bottom: 12px; right: 12px; }
+        .mid-left { top: 32px; left: 12px; }
+        .mid-right { top: 32px; right: 12px; }
+
+        .face-front  { transform: rotateY(0deg) translateZ(40px); }
+        .face-right  { transform: rotateY(90deg) translateZ(40px); }
+        .face-top    { transform: rotateX(90deg) translateZ(40px); }
+        .face-bottom { transform: rotateX(-90deg) translateZ(40px); }
+        .face-left   { transform: rotateY(-90deg) translateZ(40px); }
+        .face-back   { transform: rotateY(180deg) translateZ(40px); }
+
+        .roll-drop {
+            animation: diceDrop 0.7s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+        }
+
+        @keyframes diceDrop {
+            0% { transform: translateY(-400px) scale(0.5) rotate(-30deg); opacity: 0; }
+            40% { transform: translateY(15px) scale(1) rotate(10deg); opacity: 1; }
+            60% { transform: translateY(-20px) scale(1) rotate(-5deg); }
+            80% { transform: translateY(5px) scale(1) rotate(2deg); }
+            100% { transform: translateY(0) scale(1) rotate(0deg); }
+        }
+
+        /* --- RIGHT SIDE: PURE CSS PAPER SCORECARD --- */
+        #scorecard-panel {
+            width: 400px;
+            background-color: var(--paper-bg);
+            background-image: 
+                linear-gradient(90deg, transparent 79px, var(--paper-line-red) 79px, var(--paper-line-red) 81px, transparent 81px),
+                repeating-linear-gradient(transparent, transparent 38px, var(--paper-line-blue) 38px, var(--paper-line-blue) 40px);
+            background-attachment: local;
+            background-position: 0 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 30px 40px 90px;
+            box-sizing: border-box;
+            color: var(--pen-color);
+            box-shadow: -10px 0 25px rgba(0,0,0,0.6);
+            border-left: 1px solid #dcdcdc;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+            z-index: 50;
+        }
+
+        #game-header {
+            font-family: 'Pacifico', cursive;
+            font-size: 2.2rem;
+            color: var(--pen-color);
+            height: 80px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .header-die {
+            width: 30px;
+            height: 30px;
+            fill: none;
+            stroke: var(--pen-color);
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        #scorecard-container { width: 100%; display: flex; flex-direction: column; }
+        .paper-row { width: 100%; display: flex; flex-direction: row; }
+        .paper-col { flex: 1; display: flex; flex-direction: column; align-items: center; opacity: 0.35; transition: opacity 0.3s ease; }
+        .paper-col.active-player { opacity: 1; }
+
+        .player-label {
+            font-family: 'Covered By Your Grace', cursive;
+            font-size: 2.2rem;
+            text-align: center;
+            font-weight: bold;
+            text-decoration: underline;
+            text-decoration-style: wavy;
+            text-decoration-color: var(--pen-color);
+            height: 40px;
+            line-height: 40px;
+            margin: 0 0 40px 0;
+            padding: 0 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+
+        .score-history { display: flex; flex-direction: column; align-items: center; width: 100%; flex-grow: 1; }
+        .history-item { font-family: 'Covered By Your Grace', cursive; font-size: 2rem; color: var(--pen-color); height: 40px; line-height: 40px; margin: 0; }
+        .history-item.bust { color: #d13434; font-style: italic; opacity: 0.8; }
+        
+        .penned-label, .unpenned-label { font-family: 'Kalam', cursive; font-size: 1.3rem; color: var(--pen-color); height: 40px; line-height: 40px; margin: 0; }
+        .unpenned-label { color: var(--pencil-color); margin-top: 40px; }
+        .total-penned { font-family: 'Covered By Your Grace', cursive; font-size: 3.5rem; font-weight: bold; color: var(--pen-color); text-align: center; height: 80px; line-height: 80px; margin: 0; }
+        .turn-unpenned { font-family: 'Covered By Your Grace', cursive; font-size: 2.5rem; color: var(--pencil-color); text-align: center; height: 40px; line-height: 40px; margin: 0; }
+
+
+        /* --- HOME / PLAY NOW / MULTIPLAYER MENUS --- */
+        #menu-screen {
+            overflow-y: auto;
+        }
+
+        .menu-box {
+            width: min(520px, 92vw);
+            min-width: 0;
+            box-sizing: border-box;
+        }
+
+        .menu-subtitle {
+            margin: -15px 0 28px;
+            color: #666;
+            font-size: 1.05rem;
+            font-weight: 600;
+        }
+
+        .menu-action {
+            width: 100%;
+            border: 0;
+            border-radius: 10px;
+            padding: 16px 18px;
+            margin-top: 12px;
+            font-size: 1.35rem;
+            font-weight: 900;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.22);
+        }
+
+        .menu-action.primary { background: var(--pen-color); color: #fff; }
+        .menu-action.multiplayer { background: #4CAF50; color: #fff; }
+        .menu-action.secondary { background: #e8e8e8; color: #333; }
+        .menu-action:disabled { background: #aaa; color: #eee; cursor: not-allowed; box-shadow: none; }
+
+        .simple-field {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+            gap: 8px;
+            margin: 18px 0;
+        }
+
+        .simple-field label {
+            font-size: 1.05rem;
+            font-weight: 800;
+            color: #333;
+        }
+
+        .simple-field input,
+        .simple-field select {
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 1.2rem;
+            padding: 13px 14px;
+        }
+
+        #lobby-waiting {
+            margin-top: 8px;
+            padding: 18px;
+            border-radius: 12px;
+            background: #f2f6ff;
+            border: 2px solid #d6e2ff;
+        }
+
+        #lobby-status {
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: #333;
+            line-height: 1.5;
+        }
+
+
+        #lobby-title {
+            margin: 0 0 6px;
+            color: var(--pen-color);
+            font-size: 1.45rem;
+            font-weight: 900;
+        }
+
+        #lobby-player-list {
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+            margin: 14px 0;
+            text-align: left;
+        }
+
+        .lobby-player {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 11px 12px;
+            border-radius: 10px;
+            background: #fff;
+            border: 2px solid #dbe5fb;
+            color: #222;
+            font-weight: 800;
+        }
+
+        .lobby-player.you {
+            border-color: var(--pen-color);
+            background: #f5f8ff;
+        }
+
+        .lobby-player-name {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .lobby-tags {
+            display: flex;
+            flex-shrink: 0;
+            gap: 6px;
+        }
+
+        .lobby-tag {
+            padding: 3px 7px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            background: #e8eefc;
+            color: var(--pen-color);
+        }
+
+        .lobby-tag.host {
+            background: #fff0bd;
+            color: #7a5800;
+        }
+
+        #leave-lobby-btn {
+            background: #d13434;
+            color: #fff;
+        }
+
+        #multiplayer-error {
+            min-height: 24px;
+            color: #d13434;
+            font-weight: 800;
+            margin-top: 10px;
+        }
+
+        #host-note {
+            color: #4d6599;
+            font-size: 0.95rem;
+            margin-top: 8px;
+        }
+
+        /* --- MOBILE LAYOUT OVERRIDE --- */
+        @media (max-width: 1100px) {
+            #toggle-score-btn { 
+                display: block; 
+            }
+            
+            #game-board {
+                border-right: none;
+                width: 100vw;
+            }
+
+            #scorecard-panel { 
+                position: fixed;
+                top: 0;
+                right: -100%; 
+                width: 85vw;
+                max-width: 500px;
+                height: 100vh;
+                min-height: 100vh;
+                box-shadow: -15px 0 30px rgba(0,0,0,0.8);
+                transition: right 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+            }
+
+            #scorecard-panel.open {
+                right: 0;
+            }
+            
+            .menu-box { min-width: 90vw; padding: 20px; }
+            .menu-row { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .menu-row .inputs { width: 100%; }
+            input[type="text"] { flex: 1; }
+            
+            #table-header { font-size: 3rem; }
+            .controls { flex-direction: column; width: 80%; }
+            button.action-btn { width: 100%; }
+        }
+
+        /* Extra-small phone layout: keep all six dice inside the table and rack. */
+        @media (max-width: 600px) {
+            body {
+                height: 100dvh;
+            }
+
+            #game-board {
+                padding: 24px 12px 16px;
+            }
+
+            #table-header {
+                font-size: 2.5rem;
+                margin-bottom: 12px;
+            }
+
+            #message {
+                font-size: 1.25rem;
+                min-height: 54px;
+                height: auto;
+                margin-bottom: 10px;
+                padding: 0 8px;
+            }
+
+            #dice-container {
+                margin-bottom: 16px;
+                min-height: 300px;
+            }
+
+            #rack {
+                gap: 5px;
+                bottom: 30px;
+            }
+
+            .rack-slot {
+                width: 50px;
+                height: 50px;
+                border-radius: 9px;
+            }
+
+            /* Keep both game buttons visible on a phone.
+               The wider mobile rule stacks them; on narrow phones we put
+               Roll Dice and Bank Score side-by-side so Bank cannot fall
+               behind the browser/navigation bar. */
+            .controls {
+                flex-direction: row;
+                width: 94%;
+                gap: 8px;
+                margin-bottom: 0;
+                flex-shrink: 0;
+            }
+
+            button.action-btn {
+                flex: 1;
+                min-width: 0;
+                padding: 12px 8px;
+                font-size: 1rem;
+            }
+
+            #toggle-score-btn {
+                top: 12px;
+                right: 12px;
+                padding: 8px 12px;
+                font-size: 0.95rem;
+            }
+
+            #device-control {
+                top: 12px;
+                left: 12px;
+                gap: 5px;
+            }
+
+            #device-badge, #change-player-btn, #leave-game-btn {
+                padding: 7px 8px;
+                font-size: 0.78rem;
+            }
+
+            .device-menu-box {
+                padding: 22px 18px;
+            }
+
+            .device-menu-box h2 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- HOME / GAME MODE MENUS -->
+    <div id="menu-screen">
+        <div id="main-menu" class="menu-box">
+            <h1>10,000</h1>
+            <div class="menu-subtitle">Dice Game</div>
+            <button id="play-now-btn" class="menu-action primary" type="button">Play Now</button>
+            <button id="multiplayer-btn" class="menu-action multiplayer" type="button">Multiplayer</button>
+        </div>
+
+        <div id="solo-menu" class="menu-box hidden">
+            <h1>Play Now</h1>
+            <div class="simple-field">
+                <label for="solo-name">Your Name</label>
+                <input type="text" id="solo-name" value="Player" maxlength="12" autocomplete="nickname">
+            </div>
+            <div class="simple-field">
+                <label for="cpu-count">CPU Opponents</label>
+                <select id="cpu-count">
+                    <option value="1">1 CPU</option>
+                    <option value="2">2 CPUs</option>
+                    <option value="3">3 CPUs</option>
+                </select>
+            </div>
+            <button id="start-solo-btn" class="menu-action primary" type="button">Start Game</button>
+            <button class="menu-action secondary back-main-btn" type="button">Back</button>
+        </div>
+
+        <div id="multiplayer-menu" class="menu-box hidden">
+            <h1>Multiplayer</h1>
+
+            <div id="multiplayer-entry">
+                <div class="simple-field">
+                    <label for="multiplayer-name">Your Name</label>
+                    <input type="text" id="multiplayer-name" value="Player" maxlength="12" autocomplete="nickname">
+                </div>
+                <button id="join-multiplayer-btn" class="menu-action multiplayer" type="button">Join Game</button>
+                <button class="menu-action secondary back-main-btn" type="button">Back</button>
+            </div>
+
+            <div id="lobby-waiting" class="hidden">
+                <div id="lobby-title">Multiplayer Lobby</div>
+                <div id="lobby-status">Waiting for players...</div>
+                <div id="lobby-player-list"></div>
+                <div id="host-note"></div>
+                <button id="start-multiplayer-btn" class="menu-action multiplayer hidden" type="button">Start Game</button>
+                <button id="leave-lobby-btn" class="menu-action" type="button">Leave Lobby</button>
+            </div>
+
+            <div id="multiplayer-error"></div>
+        </div>
+    </div>
+
+    <!-- MAIN GAME (Hidden until started) -->
+    <div id="game-board" class="hidden">
+        <div id="device-control">
+            <span id="device-badge">🎮 Player</span>
+            <button id="leave-game-btn" class="hidden" type="button">🚪 Leave</button>
+        </div>
+        <button id="toggle-score-btn">📋 Scorecard</button>
+        
+        <h1 id="table-header">10,000</h1>
+        <div id="message">Waiting to start...</div>
+        
+        <div id="dice-container">
+            <div id="rack">
+                <div class="rack-slot"></div>
+                <div class="rack-slot"></div>
+                <div class="rack-slot"></div>
+                <div class="rack-slot"></div>
+                <div class="rack-slot"></div>
+                <div class="rack-slot"></div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="roll-btn" class="action-btn" disabled>Roll Dice</button>
+            <button id="bank-btn" class="action-btn" disabled>Bank Score</button>
+        </div>
+    </div>
+
+    <div id="scorecard-panel" class="hidden">
+        <div id="game-header">
+            <svg class="header-die" viewBox="0 0 40 40"><path d="M 5,10 C 5,5 5,5 10,5 H 30 C 35,5 35,5 35,10 V 30 C 35,35 35,35 30,35 H 10 C 5,35 5,35 5,30 Z M 13,13 A 3,3 0 1,1 19,13 A 3,3 0 1,1 13,13 M 23,23 A 3,3 0 1,1 29,23 A 3,3 0 1,1 23,23"/></svg>
+            10,000 DICE
+            <svg class="header-die" viewBox="0 0 40 40"><path d="M 5,10 C 5,5 5,5 10,5 H 30 C 35,5 35,5 35,10 V 30 C 35,35 35,35 30,35 H 10 C 5,35 5,35 5,30 Z M 13,13 A 3,3 0 1,1 19,13 A 3,3 0 1,1 13,13 M 23,23 A 3,3 0 1,1 29,23 A 3,3 0 1,1 23,23 M 13,23 A 3,3 0 1,1 19,23 A 3,3 0 1,1 13,23 M 23,13 A 3,3 0 1,1 29,13 A 3,3 0 1,1 23,13"/></svg>
+        </div>
+        <div id="scorecard-container">
+            <!-- Dynamically populated by JS upon game start -->
+        </div>
+    </div>
+
+    <!-- BASIC MENU NAVIGATION: intentionally independent of Socket.IO -->
+    <script>
+        (function () {
+            const mainMenu = document.getElementById('main-menu');
+            const soloMenu = document.getElementById('solo-menu');
+            const multiplayerMenu = document.getElementById('multiplayer-menu');
+
+            window.showMenu = function (which) {
+                mainMenu.classList.toggle('hidden', which !== 'main');
+                soloMenu.classList.toggle('hidden', which !== 'solo');
+                multiplayerMenu.classList.toggle('hidden', which !== 'multiplayer');
+            };
+
+            document.getElementById('play-now-btn').onclick = function () {
+                window.showMenu('solo');
+            };
+
+            document.getElementById('multiplayer-btn').onclick = function () {
+                const err = document.getElementById('multiplayer-error');
+                if (err) err.textContent = '';
+                window.showMenu('multiplayer');
+            };
+
+            document.querySelectorAll('.back-main-btn').forEach(function (btn) {
+                btn.onclick = function () {
+                    if (!window.joinedMultiplayer) window.showMenu('main');
+                };
+            });
+        })();
+    </script>
+
+    <!-- SOCKET.IO WALKIE-TALKIE -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        let socketConnectionOkay = false;
+        let socket;
+        try {
+            if (typeof io === 'function') {
+                socket = io();
+                socketConnectionOkay = true;
+            }
+        } catch (err) {
+            console.error('Socket.IO connection failed:', err);
+        }
+
+        // Keep the page/menu usable even if Socket.IO fails to load.
+        if (!socket) {
+            socket = {
+                on: function () {},
+                emit: function () {
+                    const err = document.getElementById('multiplayer-error');
+                    if (err) err.textContent = 'Cannot connect to the Node server. Restart server.js and refresh this page.';
+                }
+            };
+        }
+
+        const sceneElements = [];
+        const wrapperElements = [];
+        const cubeElements = [];
+        let pennedEls = [];
+        let unpennedEls = [];
+
+        const container = document.getElementById('dice-container');
+        const rollBtn = document.getElementById('roll-btn');
+        const bankBtn = document.getElementById('bank-btn');
+        const msgEl = document.getElementById('message');
+        const toggleScoreBtn = document.getElementById('toggle-score-btn');
+        const scorecardPanel = document.getElementById('scorecard-panel');
+        const deviceBadge = document.getElementById('device-badge');
+        const leaveGameBtn = document.getElementById('leave-game-btn');
+
+        const mainMenu = document.getElementById('main-menu');
+        const soloMenu = document.getElementById('solo-menu');
+        const multiplayerMenu = document.getElementById('multiplayer-menu');
+        const multiplayerEntry = document.getElementById('multiplayer-entry');
+        const lobbyWaiting = document.getElementById('lobby-waiting');
+        const lobbyStatus = document.getElementById('lobby-status');
+        const lobbyPlayerList = document.getElementById('lobby-player-list');
+        const hostNote = document.getElementById('host-note');
+        const leaveLobbyBtn = document.getElementById('leave-lobby-btn');
+        const multiplayerError = document.getElementById('multiplayer-error');
+        const startMultiplayerBtn = document.getElementById('start-multiplayer-btn');
+
+        let assignedPlayerIndex = null;
+        let latestState = null;
+        let joinedMultiplayer = false;
+        window.joinedMultiplayer = false;
+        let lobbyIsHost = false;
+
+        let scatterPositions = [ {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0} ];
+        let diceRotations = [ {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0} ];
+
+        function updateDeviceBadge() {
+            if (assignedPlayerIndex !== null && latestState?.playersData?.[assignedPlayerIndex]) {
+                deviceBadge.textContent = `🎮 ${latestState.playersData[assignedPlayerIndex].name}`;
+            } else {
+                deviceBadge.textContent = '👀 Watching';
+            }
+
+            // FIX: Show the leave button for BOTH local and multiplayer games
+            const isGameActive = (latestState?.mode === 'multiplayer' || latestState?.mode === 'local') &&
+                ['PLAYING', 'GAME_OVER', 'ABANDONED'].includes(latestState?.status);
+            leaveGameBtn.classList.toggle('hidden', !isGameActive);
+        }
+
+        function resetClientGameUI() {
+            sceneElements.forEach((scene) => scene.remove());
+            sceneElements.length = 0;
+            wrapperElements.length = 0;
+            cubeElements.length = 0;
+            pennedEls = [];
+            unpennedEls = [];
+            scatterPositions = [ {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0} ];
+            diceRotations = [ {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0} ];
+            document.getElementById('scorecard-container').innerHTML = '';
+            scorecardPanel.classList.remove('open');
+            toggleScoreBtn.textContent = '📋 Scorecard';
+            toggleScoreBtn.style.backgroundColor = 'var(--pen-color)';
+        }
+
+        function returnToMainMenuAfterGame() {
+            assignedPlayerIndex = null;
+            joinedMultiplayer = false;
+            window.joinedMultiplayer = false;
+            lobbyIsHost = false;
+            multiplayerEntry.classList.remove('hidden');
+            lobbyWaiting.classList.add('hidden');
+            lobbyPlayerList.innerHTML = '';
+            hostNote.textContent = '';
+            multiplayerError.textContent = '';
+            leaveLobbyBtn.disabled = false;
+            leaveLobbyBtn.textContent = 'Leave Lobby';
+            leaveGameBtn.classList.add('hidden');
+            document.getElementById('game-board').classList.add('hidden');
+            document.getElementById('scorecard-panel').classList.add('hidden');
+            document.getElementById('menu-screen').style.display = 'flex';
+            resetClientGameUI();
+            latestState = null;
+            window.showMenu('main');
+            updateDeviceBadge();
+        }
+
+        function renderLobbyPlayers(players) {
+            lobbyPlayerList.innerHTML = '';
+            const list = Array.isArray(players) ? players : [];
+
+            list.forEach((player) => {
+                const row = document.createElement('div');
+                row.className = 'lobby-player' + (player.isYou ? ' you' : '');
+
+                const name = document.createElement('div');
+                name.className = 'lobby-player-name';
+                name.textContent = player.name || 'PLAYER';
+                row.appendChild(name);
+
+                const tags = document.createElement('div');
+                tags.className = 'lobby-tags';
+
+                if (player.isYou) {
+                    const youTag = document.createElement('span');
+                    youTag.className = 'lobby-tag';
+                    youTag.textContent = 'You';
+                    tags.appendChild(youTag);
+                }
+
+                if (player.isHost) {
+                    const hostTag = document.createElement('span');
+                    hostTag.className = 'lobby-tag host';
+                    hostTag.textContent = 'Host';
+                    tags.appendChild(hostTag);
+                }
+
+                row.appendChild(tags);
+                lobbyPlayerList.appendChild(row);
+            });
+        }
+
+        function updateLobby(data) {
+            if (!data || !joinedMultiplayer) return;
+            lobbyIsHost = !!data.isHost;
+            const count = data.playerCount || 0;
+            const max = data.maxPlayers || 4;
+            lobbyStatus.textContent = `${count} of ${max} players joined`;
+            renderLobbyPlayers(data.players);
+
+            if (lobbyIsHost) {
+                hostNote.textContent = count < 2
+                    ? 'You are the host. At least 2 players are needed to start.'
+                    : 'You are the host. Start when everyone is ready.';
+                startMultiplayerBtn.classList.remove('hidden');
+                startMultiplayerBtn.disabled = count < 2;
+            } else {
+                hostNote.textContent = 'Waiting for the host to start the game.';
+                startMultiplayerBtn.classList.add('hidden');
+                startMultiplayerBtn.disabled = true;
+            }
+        }
+
+        document.getElementById('start-solo-btn').addEventListener('click', () => {
+            if (!socketConnectionOkay) {
+                alert('Cannot connect to the Node server. Make sure server.js is running, then refresh the page.');
+                return;
+            }
+            const rawName = document.getElementById('solo-name').value.trim();
+            const name = (rawName || 'PLAYER').toUpperCase();
+            const cpuCount = Number(document.getElementById('cpu-count').value) || 1;
+            socket.emit('start-local-game', { name, cpuCount });
+        });
+
+        document.getElementById('join-multiplayer-btn').addEventListener('click', () => {
+            if (!socketConnectionOkay) {
+                multiplayerError.textContent = 'Cannot connect to the Node server. Restart server.js and refresh this page.';
+                return;
+            }
+            const rawName = document.getElementById('multiplayer-name').value.trim();
+            const name = (rawName || 'PLAYER').toUpperCase();
+            multiplayerError.textContent = '';
+            socket.emit('join-multiplayer', { name });
+        });
+
+        leaveLobbyBtn.addEventListener('click', () => {
+            if (!joinedMultiplayer) return;
+            leaveLobbyBtn.disabled = true;
+            leaveLobbyBtn.textContent = 'Leaving...';
+            multiplayerError.textContent = '';
+            socket.emit('leave-multiplayer');
+        });
+
+        startMultiplayerBtn.addEventListener('click', () => {
+            if (lobbyIsHost) socket.emit('start-multiplayer-game');
+        });
+
+        leaveGameBtn.addEventListener('click', () => {
+            // FIX: Removed the rule blocking this from working in local mode
+            if (!latestState) return; 
+            if (!confirm('Leave this game?')) return;
+            leaveGameBtn.disabled = true;
+            leaveGameBtn.textContent = 'Leaving...';
+            socket.emit('leave-game');
+        });
+
+        socket.on('lobby-joined', (data) => {
+            joinedMultiplayer = true;
+            window.joinedMultiplayer = true;
+            multiplayerError.textContent = '';
+            leaveLobbyBtn.disabled = false;
+            leaveLobbyBtn.textContent = 'Leave Lobby';
+            multiplayerEntry.classList.add('hidden');
+            lobbyWaiting.classList.remove('hidden');
+            updateLobby(data);
+        });
+
+        socket.on('lobby-update', (data) => {
+            updateLobby(data);
+        });
+
+        socket.on('lobby-left', () => {
+            joinedMultiplayer = false;
+            window.joinedMultiplayer = false;
+            lobbyIsHost = false;
+            multiplayerEntry.classList.remove('hidden');
+            lobbyWaiting.classList.add('hidden');
+            lobbyPlayerList.innerHTML = '';
+            hostNote.textContent = '';
+            multiplayerError.textContent = '';
+            leaveLobbyBtn.disabled = false;
+            leaveLobbyBtn.textContent = 'Leave Lobby';
+            // Stay inside Multiplayer so the player can change their name and rejoin,
+            // or use Back to return to the main menu.
+            window.showMenu('multiplayer');
+        });
+
+        socket.on('lobby-error', (message) => {
+            multiplayerError.textContent = message || 'Could not join multiplayer.';
+        });
+
+        socket.on('assignment-reset', () => {
+            assignedPlayerIndex = null;
+            updateDeviceBadge();
+        });
+
+        socket.on('player-assigned', (data) => {
+            assignedPlayerIndex = data.playerIndex;
+            updateDeviceBadge();
+            if (latestState) updateUI(latestState);
+        });
+
+        socket.on('player-released', () => {
+            assignedPlayerIndex = null;
+            updateDeviceBadge();
+            if (latestState) updateUI(latestState);
+        });
+
+        socket.on('left-game', () => {
+            leaveGameBtn.disabled = false;
+            leaveGameBtn.textContent = '🚪 Leave';
+            returnToMainMenuAfterGame();
+        });
+
+        socket.on('action-denied', (message) => {
+            if (message) {
+                msgEl.textContent = message;
+                msgEl.style.color = '#ff9f43';
+            }
+        });
+
+        toggleScoreBtn.addEventListener('click', () => {
+            scorecardPanel.classList.toggle('open');
+            if(scorecardPanel.classList.contains('open')) {
+                toggleScoreBtn.textContent = '❌ Close';
+                toggleScoreBtn.style.backgroundColor = '#d13434';
+            } else {
+                toggleScoreBtn.textContent = '📋 Scorecard';
+                toggleScoreBtn.style.backgroundColor = 'var(--pen-color)';
+            }
+        });
+
+        rollBtn.onclick = () => { socket.emit('roll-dice'); };
+        bankBtn.onclick = () => { socket.emit('bank-score'); };
+
+        function initDice() {
+            if (sceneElements.length > 0) return;
+            const facesHTML = `
+                <div class="cube-face face-front"><div class="dot center"></div></div>
+                <div class="cube-face face-right"><div class="dot top-left"></div><div class="dot bottom-right"></div></div>
+                <div class="cube-face face-top"><div class="dot top-left"></div><div class="dot center"></div><div class="dot bottom-right"></div></div>
+                <div class="cube-face face-bottom"><div class="dot top-left"></div><div class="dot top-right"></div><div class="dot bottom-left"></div><div class="dot bottom-right"></div></div>
+                <div class="cube-face face-left"><div class="dot top-left"></div><div class="dot top-right"></div><div class="dot center"></div><div class="dot bottom-left"></div><div class="dot bottom-right"></div></div>
+                <div class="cube-face face-back"><div class="dot top-left"></div><div class="dot top-right"></div><div class="dot mid-left"></div><div class="dot mid-right"></div><div class="dot bottom-left"></div><div class="dot bottom-right"></div></div>
+            `;
+            for (let i = 0; i < 6; i++) {
+                const scene = document.createElement('div');
+                scene.className = 'scene';
+                scene.onclick = () => {
+                    if (!latestState || assignedPlayerIndex !== latestState.currentPlayer) return;
+                    socket.emit('toggle-hold', i);
+                };
+                
+                const wrapper = document.createElement('div');
+                wrapper.className = 'roll-wrapper';
+
+                const shadow = document.createElement('div');
+                shadow.className = 'shadow';
+                wrapper.appendChild(shadow);
+
+                const cube = document.createElement('div');
+                cube.className = 'cube';
+                cube.innerHTML = facesHTML;
+                wrapper.appendChild(cube);
+                
+                scene.appendChild(wrapper);
+                container.appendChild(scene);
+                
+                sceneElements.push(scene);
+                wrapperElements.push(wrapper);
+                cubeElements.push(cube);
+                
+                generateScatterPosition(i);
+            }
+        }
+
+        function generateScatterPosition(index) {
+            const cw = container.clientWidth || 600;
+            const ch = container.clientHeight || 400;
+            const isPhone = cw < 600;
+
+            // Loose dice are slightly smaller on a phone.  Keep the same 80px
+            // cube on desktop, but use its visible scaled size for collision checks.
+            const scale = isPhone ? 0.72 : 1;
+            const dieSize = 80 * scale;
+            const padding = isPhone ? 10 : 20;
+            const gap = isPhone ? 10 : 18;
+
+            // Leave the bottom of the dice area clear for the six-slot rack.
+            const rackReserve = isPhone ? 115 : 150;
+            const maxX = Math.max(padding, cw - dieSize - padding);
+            const maxY = Math.max(padding, ch - rackReserve - dieSize);
+
+            let chosen = null;
+
+            // Try random locations, but reject any location that would overlap
+            // another loose die. This fixes the phone pile-up.
+            for (let attempt = 0; attempt < 100; attempt++) {
+                const candidate = {
+                    x: padding + Math.random() * Math.max(0, maxX - padding),
+                    y: padding + Math.random() * Math.max(0, maxY - padding)
+                };
+
+                let overlaps = false;
+                for (let i = 0; i < scatterPositions.length; i++) {
+                    if (i === index || !scatterPositions[i]) continue;
+                    const other = scatterPositions[i];
+
+                    if (Math.abs(candidate.x - other.x) < dieSize + gap &&
+                        Math.abs(candidate.y - other.y) < dieSize + gap) {
+                        overlaps = true;
+                        break;
+                    }
+                }
+
+                if (!overlaps) {
+                    chosen = candidate;
+                    break;
+                }
+            }
+
+            // Very small screens can run out of random room. Fall back to a
+            // predictable grid instead of allowing dice to stack on each other.
+            if (!chosen) {
+                const cell = dieSize + gap;
+                const columns = Math.max(1, Math.floor((cw - padding * 2 + gap) / cell));
+                chosen = {
+                    x: Math.min(maxX, padding + (index % columns) * cell),
+                    y: Math.min(maxY, padding + Math.floor(index / columns) * cell)
+                };
+            }
+
+            scatterPositions[index] = {
+                x: Math.round(chosen.x),
+                y: Math.round(chosen.y)
+            };
+        }
+
+        function getRackPos(slotIndex) {
+            let cw = container.clientWidth || 600;
+            let ch = container.clientHeight || 400;
+            const slotW = cw < 600 ? 50 : 80;
+            const gap = cw < 600 ? 5 : 15;
+            const totalW = (6 * slotW) + (5 * gap);
+            const startX = (cw - totalW) / 2;
+            
+            return {
+                x: startX + (slotIndex * (slotW + gap)),
+                y: ch - slotW - 30 
+            };
+        }
+
+        function getRotation(val) {
+            switch(val) {
+                case 1: return {x: 0, y: 0};
+                case 2: return {x: 0, y: -90};
+                case 3: return {x: -90, y: 0};
+                case 4: return {x: 90, y: 0};
+                case 5: return {x: 0, y: 90};
+                case 6: return {x: 180, y: 0};
+                default: return {x: 0, y: 0};
+            }
+        }
+
+        function repositionDice(state) {
+            if (sceneElements.length === 0) return;
+            const isPhone = container.clientWidth < 600;
+            const looseScale = isPhone ? 0.72 : 1;
+            const rackScale = isPhone ? 0.60 : 1;
+
+            let heldCount = 0;
+            for (let i = 0; i < 6; i++) {
+                if (state.heldDice[i] || state.lockedDice[i]) {
+                    let pos = getRackPos(heldCount);
+                    sceneElements[i].style.left = pos.x + 'px';
+                    sceneElements[i].style.top = pos.y + 'px';
+                    sceneElements[i].style.transform = `scale(${rackScale})`;
+                    heldCount++;
+                } else {
+                    sceneElements[i].style.left = scatterPositions[i].x + 'px';
+                    sceneElements[i].style.top = scatterPositions[i].y + 'px';
+                    sceneElements[i].style.transform = `scale(${looseScale})`;
+                }
+            }
+        }
+
+        function buildDynamicScorecard(playersData) {
+            let labelsRow = '<div class="paper-row">';
+            let historyRow = '<div class="paper-row" style="margin-bottom: 40px;">';
+            let totalsRow = '<div class="paper-row">';
+
+            playersData.forEach((p, i) => {
+                labelsRow += `<div class="paper-col" id="p${i}-label-col"><div class="player-label">${p.name}</div></div>`;
+                historyRow += `<div class="paper-col" id="p${i}-history-col"><div class="score-history" id="p${i}-history"></div></div>`;
+                totalsRow += `
+                <div class="paper-col" id="p${i}-totals-col">
+                    <div class="penned-label">Total Penned</div><div class="total-penned" id="p${i}-total-penned">${p.totalScore}</div>
+                    <div class="unpenned-label">Turn Unpenned</div><div class="turn-unpenned" id="p${i}-turn-unpenned">0</div>
+                </div>`;
+            });
+
+            labelsRow += '</div>';
+            historyRow += '</div>';
+            totalsRow += '</div>';
+
+            document.getElementById('scorecard-container').innerHTML = labelsRow + historyRow + totalsRow;
+
+            for(let i = 0; i < playersData.length; i++) {
+                pennedEls.push(document.getElementById(`p${i}-total-penned`));
+                unpennedEls.push(document.getElementById(`p${i}-turn-unpenned`));
+            }
+        }
+
+        function addHistory(playerIndex, score) {
+            const historyContainer = document.getElementById(`p${playerIndex}-history`);
+            if(!historyContainer) return;
+            const item = document.createElement('div');
+            item.className = 'history-item';
+            
+            if (score === 0) {
+                item.textContent = "Bust";
+                item.classList.add('bust');
+            } else {
+                item.textContent = "+" + score;
+            }
+            
+            historyContainer.appendChild(item);
+            setTimeout(() => {
+                const panel = document.getElementById('scorecard-panel');
+                panel.scrollTop = panel.scrollHeight;
+            }, 50);
+        }
+
+        function updateUI(state) {
+            latestState = state;
+            updateDeviceBadge();
+            msgEl.textContent = state.message;
+            msgEl.style.color = state.isLastTurn ? "#FFD700" : "white";
+            if(state.status === 'GAME_OVER') {
+                msgEl.style.color = state.message.includes('TIE') ? "#FFD700" : "#4CAF50";
+            } else if (state.status === 'ABANDONED') {
+                msgEl.style.color = '#ff9f43';
+            }
+
+            const isMyTurn = state.status === 'PLAYING' && assignedPlayerIndex !== null && assignedPlayerIndex === state.currentPlayer;
+
+            for (let i = 0; i < 6; i++) {
+                sceneElements[i].classList.toggle('held', state.heldDice[i]);
+                sceneElements[i].classList.toggle('locked', state.lockedDice[i]);
+                sceneElements[i].classList.toggle('device-disabled', !isMyTurn);
+            }
+            repositionDice(state);
+
+            state.playersData.forEach((_, i) => {
+                let colLabel = document.getElementById(`p${i}-label-col`);
+                let colHist = document.getElementById(`p${i}-history-col`);
+                let colTotal = document.getElementById(`p${i}-totals-col`);
+                
+                if (colLabel) {
+                    if (i === state.currentPlayer || state.status === 'GAME_OVER') {
+                        colLabel.classList.add('active-player');
+                        colHist.classList.add('active-player');
+                        colTotal.classList.add('active-player');
+                    } else {
+                        colLabel.classList.remove('active-player');
+                        colHist.classList.remove('active-player');
+                        colTotal.classList.remove('active-player');
+                    }
+                }
+            });
+
+            if (pennedEls.length > 0) {
+                state.playersData.forEach((p, i) => {
+                    if(pennedEls[i]) pennedEls[i].textContent = p.totalScore;
+                    if(unpennedEls[i]) {
+                        if (i === state.currentPlayer) {
+                            unpennedEls[i].textContent = state.turnScore + state.currentRollScore;
+                        } else {
+                            unpennedEls[i].textContent = "0";
+                        }
+                    }
+                });
+            }
+
+            if (state.status === 'PLAYING' && state.playersData[state.currentPlayer].type === 'human' && isMyTurn) {
+                let p = state.playersData[state.currentPlayer];
+                let potential = state.turnScore + state.currentRollScore;
+                
+                if (state.currentRollScore > 0) {
+                    rollBtn.disabled = false;
+                    if (!p.isOnBoard && potential < 1000) {
+                        bankBtn.disabled = true;
+                        msgEl.style.color = "#FFD700";
+                    } else {
+                        bankBtn.disabled = false;
+                    }
+                } else {
+                    rollBtn.disabled = true;
+                    bankBtn.disabled = true;
+                }
+                
+                if (!state.hasRolledThisTurn) {
+                    rollBtn.disabled = false;
+                    bankBtn.disabled = true;
+                }
+            } else {
+                rollBtn.disabled = true;
+                bankBtn.disabled = true;
+            }
+        }
+
+        socket.on('sync-state', (state) => {
+            latestState = state;
+
+            if (state.status === 'SETUP') {
+                document.getElementById('menu-screen').style.display = 'flex';
+                document.getElementById('game-board').classList.add('hidden');
+                document.getElementById('scorecard-panel').classList.add('hidden');
+                leaveGameBtn.classList.add('hidden');
+                resetClientGameUI();
+                updateDeviceBadge();
+                return;
+            }
+
+            if (state.status === 'PLAYING' || state.status === 'GAME_OVER' || state.status === 'ABANDONED') {
+                document.getElementById('menu-screen').style.display = 'none';
+                document.getElementById('game-board').classList.remove('hidden');
+                document.getElementById('scorecard-panel').classList.remove('hidden');
+
+                if (sceneElements.length === 0) {
+                    buildDynamicScorecard(state.playersData);
+                    initDice();
+                    for (let i = 0; i < 6; i++) {
+                        let target = getRotation(state.diceValues[i]);
+                        cubeElements[i].style.transform = `rotateX(${target.x}deg) rotateY(${target.y}deg)`;
+                    }
+                }
+                updateDeviceBadge();
+                updateUI(state);
+            }
+        });
+
+        socket.on('dice-rolled', (state) => {
+            for (let i = 0; i < 6; i++) {
+                if (!state.lockedDice[i] && !state.heldDice[i]) {
+                    let val = state.diceValues[i];
+                    let target = getRotation(val);
+                    let rot = diceRotations[i];
+                    
+                    let newX = Math.floor(rot.x / 360) * 360 + 720 + target.x + (Math.floor(Math.random() * 2) * 360);
+                    let newY = Math.floor(rot.y / 360) * 360 + 720 + target.y + (Math.floor(Math.random() * 2) * 360);
+
+                    diceRotations[i] = { x: newX, y: newY };
+                    cubeElements[i].style.transform = `rotateX(${newX}deg) rotateY(${newY}deg)`;
+                    
+                    generateScatterPosition(i);
+                    
+                    wrapperElements[i].classList.remove('roll-drop');
+                    void wrapperElements[i].offsetWidth; 
+                    wrapperElements[i].style.animationDelay = (Math.random() * 0.15) + 's'; 
+                    wrapperElements[i].classList.add('roll-drop');
+                }
+            }
+            updateUI(state);
+        });
+
+        socket.on('bust', (playerIndex) => {
+            addHistory(playerIndex, 0);
+            msgEl.style.color = "#e94560";
+        });
+
+        socket.on('banked', (data) => {
+            addHistory(data.playerIndex, data.score);
+            msgEl.style.color = "#4CAF50";
+        });
+
+        socket.on('new-turn', () => {
+            for (let i = 0; i < 6; i++) { generateScatterPosition(i); }
+        });
+        
+        socket.on('game-over', () => {
+            if(window.innerWidth <= 1100 && !scorecardPanel.classList.contains('open')) {
+                toggleScoreBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>
