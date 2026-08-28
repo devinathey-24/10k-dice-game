@@ -122,50 +122,8 @@
             position: relative;
         }
 
+
         .hidden { display: none !important; }
-
-        /* --- NEW ROLL-OFF OVERLAY --- */
-        #roll-off-overlay {
-            position: absolute; 
-            inset: 0;
-            background: rgba(0,0,0,0.85);
-            z-index: 85;
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center;
-        }
-
-        .roll-off-row {
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center;
-            background: #f2f6ff; 
-            border: 2px solid #d6e2ff; 
-            padding: 12px 20px;
-            border-radius: 10px; 
-            font-size: 1.3rem; 
-            font-weight: bold; 
-            color: #222;
-        }
-
-        .roll-off-row.you { 
-            border-color: var(--pen-color); 
-            background: #e8eefc; 
-        }
-
-        .roll-off-score { 
-            font-family: 'Covered By Your Grace', cursive; 
-            font-size: 2.5rem; 
-            color: var(--pen-color); 
-            line-height: 1; 
-        }
-
-        .roll-off-score.eliminated {
-            color: #d13434;
-            text-decoration: line-through;
-            opacity: 0.5;
-        }
 
         /* --- MULTIPLAYER DEVICE / PLAYER PICKER --- */
         #device-menu {
@@ -826,10 +784,6 @@
                 border-radius: 9px;
             }
 
-            /* Keep both game buttons visible on a phone.
-               The wider mobile rule stacks them; on narrow phones we put
-               Roll Dice and Bank Score side-by-side so Bank cannot fall
-               behind the browser/navigation bar. */
             .controls {
                 flex-direction: row;
                 width: 94%;
@@ -927,18 +881,6 @@
         </div>
     </div>
 
-    <!-- ROLL OFF OVERLAY -->
-    <div id="roll-off-overlay" class="hidden">
-        <div class="menu-box" style="width: 500px;">
-            <h2 style="font-family:'Pacifico', cursive; color:var(--pen-color); font-size:3rem; margin-top:0;">Roll for First!</h2>
-            <div id="roll-off-msg" style="font-size:1.2rem; font-weight:bold; margin-bottom:20px; color:#333;">Waiting for players...</div>
-            <div id="roll-off-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:25px; text-align:left;">
-                <!-- Dynamically populated -->
-            </div>
-            <button id="do-roll-off-btn" class="action-btn hidden" style="width:100%; background:var(--pen-color); color:white;">Roll Die 🎲</button>
-        </div>
-    </div>
-
     <!-- MAIN GAME (Hidden until started) -->
     <div id="game-board" class="hidden">
         <div id="device-control">
@@ -962,6 +904,9 @@
         </div>
 
         <div class="controls">
+            <!-- NEW ROLL FOR FIRST BUTTON -->
+            <button id="roll-off-btn" class="action-btn hidden" style="background-color: #e67e22; color: white;">Roll For First</button>
+            
             <button id="roll-btn" class="action-btn" disabled>Roll Dice</button>
             <button id="bank-all-btn" class="action-btn" disabled style="background-color: #8e44ad; color: white;">Bank All</button>
             <button id="bank-btn" class="action-btn" disabled>Bank Score</button>
@@ -1046,6 +991,7 @@
         const rollBtn = document.getElementById('roll-btn');
         const bankBtn = document.getElementById('bank-btn');
         const bankAllBtn = document.getElementById('bank-all-btn'); 
+        const rollOffBtn = document.getElementById('roll-off-btn'); 
         const msgEl = document.getElementById('message');
         const toggleScoreBtn = document.getElementById('toggle-score-btn');
         const scorecardPanel = document.getElementById('scorecard-panel');
@@ -1063,11 +1009,6 @@
         const leaveLobbyBtn = document.getElementById('leave-lobby-btn');
         const multiplayerError = document.getElementById('multiplayer-error');
         const startMultiplayerBtn = document.getElementById('start-multiplayer-btn');
-
-        const rollOffOverlay = document.getElementById('roll-off-overlay');
-        const rollOffMsg = document.getElementById('roll-off-msg');
-        const rollOffList = document.getElementById('roll-off-list');
-        const doRollOffBtn = document.getElementById('do-roll-off-btn');
 
         let assignedPlayerIndex = null;
         let latestState = null;
@@ -1104,7 +1045,6 @@
             scorecardPanel.classList.remove('open');
             toggleScoreBtn.textContent = '📋 Scorecard';
             toggleScoreBtn.style.backgroundColor = 'var(--pen-color)';
-            rollOffOverlay.classList.add('hidden');
         }
 
         function returnToMainMenuAfterGame() {
@@ -1304,13 +1244,8 @@
         rollBtn.onclick = () => { socket.emit('roll-dice'); };
         bankBtn.onclick = () => { socket.emit('bank-score'); };
         bankAllBtn.onclick = () => { socket.emit('bank-all'); }; 
+        rollOffBtn.onclick = () => { socket.emit('roll-off'); };
         document.getElementById('play-again-btn').onclick = () => { socket.emit('play-again'); };
-        
-        // Connect the new Roll-Off UI button
-        doRollOffBtn.onclick = () => { 
-            doRollOffBtn.disabled = true;
-            socket.emit('roll-off'); 
-        };
 
         function initDice() {
             if (sceneElements.length > 0) return;
@@ -1439,9 +1374,39 @@
             const isPhone = container.clientWidth < 600;
             const looseScale = isPhone ? 0.72 : 1;
             const rackScale = isPhone ? 0.60 : 1;
+            let cw = container.clientWidth || 600;
+            let ch = container.clientHeight || 400;
 
+            // --- 3D ROLL-OFF DISPLAY RULES ---
+            if (state.status === 'ROLL_OFF') {
+                const activeCount = state.playersData.length;
+                const slotW = 80 * looseScale;
+                const gap = 30;
+                const totalW = (activeCount * slotW) + ((activeCount - 1) * gap);
+                
+                // Line them perfectly up in the center of the TV
+                const startX = (cw - totalW) / 2;
+                const startY = (ch - slotW) / 2;
+
+                for (let i = 0; i < 6; i++) {
+                    if (i < activeCount && state.playersData[i].rollOffVal !== -1) {
+                        sceneElements[i].style.display = 'block';
+                        sceneElements[i].style.left = startX + (i * (slotW + gap)) + 'px';
+                        sceneElements[i].style.top = startY + 'px';
+                        sceneElements[i].style.transform = `scale(${looseScale})`;
+                    } else {
+                        // Hide dice for players who were eliminated in a tie-breaker
+                        sceneElements[i].style.display = 'none';
+                    }
+                }
+                return;
+            }
+
+            // --- REGULAR GAMEPLAY DISPLAY RULES ---
             let heldCount = 0;
             for (let i = 0; i < 6; i++) {
+                sceneElements[i].style.display = 'block'; 
+                
                 if (state.heldDice[i] || state.lockedDice[i]) {
                     let pos = getRackPos(heldCount);
                     sceneElements[i].style.left = pos.x + 'px';
@@ -1531,7 +1496,17 @@
                 let colTotal = document.getElementById(`p${i}-totals-col`);
                 
                 if (colLabel) {
-                    if (i === state.currentPlayer || state.status === 'GAME_OVER') {
+                    if (state.status === 'ROLL_OFF') {
+                        if (state.playersData[i].rollOffVal !== -1) {
+                            colLabel.classList.add('active-player');
+                            colHist.classList.add('active-player');
+                            colTotal.classList.add('active-player');
+                        } else {
+                            colLabel.classList.remove('active-player');
+                            colHist.classList.remove('active-player');
+                            colTotal.classList.remove('active-player');
+                        }
+                    } else if (i === state.currentPlayer || state.status === 'GAME_OVER') {
                         colLabel.classList.add('active-player');
                         colHist.classList.add('active-player');
                         colTotal.classList.add('active-player');
@@ -1547,7 +1522,15 @@
                 state.playersData.forEach((p, i) => {
                     if(pennedEls[i]) pennedEls[i].textContent = p.totalScore;
                     if(unpennedEls[i]) {
-                        if (i === state.currentPlayer) {
+                        if (state.status === 'ROLL_OFF') {
+                            if (p.rollOffVal === -1) {
+                                unpennedEls[i].textContent = "Out";
+                            } else if (p.rollOffVal === null) {
+                                unpennedEls[i].textContent = "Rolling...";
+                            } else {
+                                unpennedEls[i].textContent = p.rollOffVal;
+                            }
+                        } else if (i === state.currentPlayer) {
                             unpennedEls[i].textContent = state.turnScore + state.currentRollScore;
                         } else {
                             unpennedEls[i].textContent = "0";
@@ -1556,19 +1539,34 @@
                 });
             }
 
-            // BUTTON DISPLAY LOGIC
+            // --- BUTTON DISPLAY LOGIC ---
             const playAgainBtn = document.getElementById('play-again-btn');
 
-            if (state.status === 'GAME_OVER') {
+            if (state.status === 'ROLL_OFF') {
                 rollBtn.classList.add('hidden');
                 bankBtn.classList.add('hidden');
                 bankAllBtn.classList.add('hidden');
+                playAgainBtn.classList.add('hidden');
+                rollOffBtn.classList.remove('hidden');
+
+                let myP = assignedPlayerIndex !== null ? state.playersData[assignedPlayerIndex] : null;
+                if (myP && myP.rollOffVal === null) {
+                    rollOffBtn.disabled = false;
+                } else {
+                    rollOffBtn.disabled = true;
+                }
+            } else if (state.status === 'GAME_OVER') {
+                rollBtn.classList.add('hidden');
+                bankBtn.classList.add('hidden');
+                bankAllBtn.classList.add('hidden');
+                rollOffBtn.classList.add('hidden');
                 playAgainBtn.classList.remove('hidden');
             } else {
                 rollBtn.classList.remove('hidden');
                 bankBtn.classList.remove('hidden');
                 bankAllBtn.classList.remove('hidden');
                 playAgainBtn.classList.add('hidden');
+                rollOffBtn.classList.add('hidden');
 
                 if (state.status === 'PLAYING' && state.playersData[state.currentPlayer].type === 'human' && isMyTurn) {
                     let p = state.playersData[state.currentPlayer];
@@ -1615,55 +1613,10 @@
                 return;
             }
 
-            // --- ROLL-OFF OVERLAY LOGIC ---
-            if (state.status === 'ROLL_OFF') {
-                document.getElementById('menu-screen').style.display = 'none';
-                document.getElementById('game-board').classList.remove('hidden');
-                rollOffOverlay.classList.remove('hidden');
-                updateDeviceBadge();
-                
-                rollOffMsg.textContent = state.message;
-                rollOffList.innerHTML = '';
-                
-                let myRollScore = null;
-                
-                state.playersData.forEach((p, i) => {
-                    const row = document.createElement('div');
-                    row.className = 'roll-off-row' + (i === assignedPlayerIndex ? ' you' : '');
-                    
-                    const nameSpan = document.createElement('span');
-                    nameSpan.textContent = p.name;
-                    row.appendChild(nameSpan);
-                    
-                    const scoreSpan = document.createElement('span');
-                    if (p.rollOffVal === -1) {
-                        scoreSpan.className = 'roll-off-score eliminated';
-                        scoreSpan.textContent = 'Out';
-                    } else {
-                        scoreSpan.className = 'roll-off-score';
-                        scoreSpan.textContent = p.rollOffVal === null ? '?' : p.rollOffVal;
-                    }
-                    row.appendChild(scoreSpan);
-                    rollOffList.appendChild(row);
-
-                    if (i === assignedPlayerIndex) myRollScore = p.rollOffVal;
-                });
-
-                if (assignedPlayerIndex !== null && myRollScore === null) {
-                    doRollOffBtn.classList.remove('hidden');
-                    doRollOffBtn.disabled = false;
-                } else {
-                    doRollOffBtn.classList.add('hidden');
-                }
-                return;
-            }
-
-            // --- MAIN PLAYING LOGIC ---
-            if (state.status === 'PLAYING' || state.status === 'GAME_OVER' || state.status === 'ABANDONED') {
+            if (state.status === 'PLAYING' || state.status === 'GAME_OVER' || state.status === 'ABANDONED' || state.status === 'ROLL_OFF') {
                 document.getElementById('menu-screen').style.display = 'none';
                 document.getElementById('game-board').classList.remove('hidden');
                 document.getElementById('scorecard-panel').classList.remove('hidden');
-                rollOffOverlay.classList.add('hidden');
 
                 if (sceneElements.length === 0) {
                     buildDynamicScorecard(state.playersData);
@@ -1675,6 +1628,27 @@
                 }
                 updateDeviceBadge();
                 updateUI(state);
+            }
+        });
+
+        // --- SPECIFIC 3D ROLL-OFF DIE ANIMATION ---
+        socket.on('roll-off-dice-rolled', (data) => {
+            let i = data.playerIndex;
+            let val = data.val;
+            let target = getRotation(val);
+            let rot = diceRotations[i];
+            
+            let newX = Math.floor(rot.x / 360) * 360 + 720 + target.x + (Math.floor(Math.random() * 2) * 360);
+            let newY = Math.floor(rot.y / 360) * 360 + 720 + target.y + (Math.floor(Math.random() * 2) * 360);
+
+            diceRotations[i] = { x: newX, y: newY };
+            if(cubeElements[i]) cubeElements[i].style.transform = `rotateX(${newX}deg) rotateY(${newY}deg)`;
+            
+            if(wrapperElements[i]) {
+                wrapperElements[i].classList.remove('roll-drop');
+                void wrapperElements[i].offsetWidth; 
+                wrapperElements[i].style.animationDelay = '0s'; 
+                wrapperElements[i].classList.add('roll-drop');
             }
         });
 

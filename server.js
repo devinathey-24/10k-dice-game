@@ -69,9 +69,11 @@ function broadcastLobby() {
 
 function removeFromLobby(socket) {
     const wasInLobby = lobbyPlayers.delete(socket.id);
+
     if (lobbyHostSocketId === socket.id) {
         lobbyHostSocketId = lobbyPlayers.keys().next().value || null;
     }
+
     socket.emit('lobby-left');
     broadcastLobby();
     return wasInLobby;
@@ -106,16 +108,20 @@ function resetToSetup() {
     io.emit('sync-state', gameState);
 }
 
-// --- ROLL-OFF MINI GAME LOGIC ---
+// --- 3D ROLL-OFF LOGIC ---
 function triggerCpuRollOff() {
     if (gameState.status !== 'ROLL_OFF') return;
     
     gameState.playersData.forEach((p, i) => {
         if (p.type === 'cpu' && p.rollOffVal === null) {
-            // Give the CPUs a natural 1-2 second delay before they "click" to roll
+            // Give CPUs a natural delay so it feels like they are thinking
             setTimeout(() => {
                 if (gameState.status === 'ROLL_OFF' && p.rollOffVal === null) {
-                    p.rollOffVal = crypto.randomInt(1, 7);
+                    let roll = crypto.randomInt(1, 7);
+                    p.rollOffVal = roll;
+                    gameState.diceValues[i] = roll; // Assign die 'i' to player 'i'
+                    
+                    io.emit('roll-off-dice-rolled', { playerIndex: i, val: roll });
                     io.emit('sync-state', gameState);
                     checkRollOffCompletion();
                 }
@@ -127,16 +133,16 @@ function triggerCpuRollOff() {
 function checkRollOffCompletion() {
     if (gameState.status !== 'ROLL_OFF') return;
 
-    // Check if all players who are actively in this round have rolled
-    const allRolled = gameState.playersData.every(p => p.rollOffVal !== null);
+    // Check if everyone still active in the roll-off has rolled
+    const activePlayers = gameState.playersData.filter(p => p.rollOffVal !== -1);
+    const allRolled = activePlayers.every(p => p.rollOffVal !== null);
     if (!allRolled) return;
 
     let maxRoll = -1;
     let tiedIndices = [];
 
-    // Find the highest roll among active participants
     gameState.playersData.forEach((p, i) => {
-        if (p.rollOffVal !== -1) { // -1 means eliminated
+        if (p.rollOffVal !== -1) { 
             if (p.rollOffVal > maxRoll) {
                 maxRoll = p.rollOffVal;
                 tiedIndices = [i];
@@ -154,18 +160,25 @@ function checkRollOffCompletion() {
         
         isTransitioning = true;
         
-        // Wait 3 seconds so everyone can see the final results, then start the main game
+        // Let everyone look at the final dice for 3 seconds before starting the game
         setTimeout(() => {
             gameState.status = 'PLAYING';
             gameState.currentPlayer = winnerIndex;
             gameState.message = `${gameState.playersData[winnerIndex].name}'s turn! Roll the dice.`;
+            
+            // Visually shuffle all 6 dice so they scatter dynamically
+            for(let i=0; i<6; i++) {
+                gameState.diceValues[i] = crypto.randomInt(1,7);
+            }
+
             isTransitioning = false;
+            io.emit('new-turn');
             io.emit('sync-state', gameState);
             triggerCpuTurn();
         }, 3000);
 
     } else {
-        // We have a tie! Eliminate the losers and force a re-roll
+        // Tie! Eliminate the losers and re-roll the winners
         gameState.message = "TIE! Sudden death re-roll for the winners!";
         io.emit('sync-state', gameState);
         
@@ -174,15 +187,15 @@ function checkRollOffCompletion() {
         setTimeout(() => {
             gameState.playersData.forEach((p, i) => {
                 if (tiedIndices.includes(i)) {
-                    p.rollOffVal = null; // Re-enter the ring
+                    p.rollOffVal = null; // Still in
                 } else {
-                    p.rollOffVal = -1;   // Eliminated
+                    p.rollOffVal = -1;   // Eliminated (die disappears)
                 }
             });
-            gameState.message = "Roll to break the tie!";
+            gameState.message = "Roll your die to break the tie!";
             isTransitioning = false;
             io.emit('sync-state', gameState);
-            triggerCpuRollOff(); // Re-trigger the CPUs if they are in the tie-breaker
+            triggerCpuRollOff(); 
         }, 3000);
     }
 }
@@ -315,6 +328,7 @@ function calculateScore(values) {
     return score;
 }
 
+// --- DYNAMIC MESSAGE LOGIC ---
 function getWinningTarget() {
     return Math.max(...gameState.playersData.map(p => p.totalScore));
 }
@@ -344,6 +358,7 @@ function updateActiveMessage() {
     }
 }
 
+// --- CORE RULE EXECUTION ---
 function executeRoll() {
     if (gameState.status !== 'PLAYING') return false;
 
@@ -369,6 +384,7 @@ function executeRoll() {
     let currentRollValues = [];
     let isBust = true;
     
+    // BAD LUCK PROTECTION: Secret background rerolls if on a losing streak
     let maxAttempts = p.consecutiveBusts >= 2 ? 3 : 1; 
     let attempts = 0;
 
@@ -399,7 +415,7 @@ function executeRoll() {
     let pName = p.name;
 
     if (isBust) {
-        p.consecutiveBusts++; 
+        p.consecutiveBusts++; // Streak continues
         gameState.message = `${pName} BUSTED! Turn over.`;
         gameState.turnScore = 0;
         gameState.currentRollScore = 0;
@@ -434,6 +450,7 @@ function executeToggleHold(index) {
 }
 
 function executeBank() {
+    // BAD LUCK PROTECTION: Reset the streak tracker because they scored
     gameState.playersData[gameState.currentPlayer].consecutiveBusts = 0;
 
     gameState.turnScore += gameState.currentRollScore;
@@ -705,7 +722,6 @@ io.on('connection', (socket) => {
         io.emit('sync-state', gameState);
         broadcastAssignments();
         
-        // Trigger CPU rolls for the mini-game
         triggerCpuRollOff();
     });
 
@@ -765,11 +781,14 @@ io.on('connection', (socket) => {
         if (playerIndex === undefined) return;
         
         let p = gameState.playersData[playerIndex];
-        
-        // Ensure they are eligible to roll (not eliminated in a tie breaker, and haven't rolled yet)
-        if (p.rollOffVal !== null) return;
+        if (p.rollOffVal !== null) return; // Prevent double-rolling
 
-        p.rollOffVal = crypto.randomInt(1, 7);
+        let roll = crypto.randomInt(1, 7);
+        p.rollOffVal = roll;
+        gameState.diceValues[playerIndex] = roll; // Sync to visual die
+        
+        // Spin this specific die immediately
+        io.emit('roll-off-dice-rolled', { playerIndex, val: roll });
         io.emit('sync-state', gameState);
         checkRollOffCompletion();
     });
