@@ -122,8 +122,50 @@
             position: relative;
         }
 
-
         .hidden { display: none !important; }
+
+        /* --- NEW ROLL-OFF OVERLAY --- */
+        #roll-off-overlay {
+            position: absolute; 
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 85;
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center;
+        }
+
+        .roll-off-row {
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            background: #f2f6ff; 
+            border: 2px solid #d6e2ff; 
+            padding: 12px 20px;
+            border-radius: 10px; 
+            font-size: 1.3rem; 
+            font-weight: bold; 
+            color: #222;
+        }
+
+        .roll-off-row.you { 
+            border-color: var(--pen-color); 
+            background: #e8eefc; 
+        }
+
+        .roll-off-score { 
+            font-family: 'Covered By Your Grace', cursive; 
+            font-size: 2.5rem; 
+            color: var(--pen-color); 
+            line-height: 1; 
+        }
+
+        .roll-off-score.eliminated {
+            color: #d13434;
+            text-decoration: line-through;
+            opacity: 0.5;
+        }
 
         /* --- MULTIPLAYER DEVICE / PLAYER PICKER --- */
         #device-menu {
@@ -885,6 +927,18 @@
         </div>
     </div>
 
+    <!-- ROLL OFF OVERLAY -->
+    <div id="roll-off-overlay" class="hidden">
+        <div class="menu-box" style="width: 500px;">
+            <h2 style="font-family:'Pacifico', cursive; color:var(--pen-color); font-size:3rem; margin-top:0;">Roll for First!</h2>
+            <div id="roll-off-msg" style="font-size:1.2rem; font-weight:bold; margin-bottom:20px; color:#333;">Waiting for players...</div>
+            <div id="roll-off-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:25px; text-align:left;">
+                <!-- Dynamically populated -->
+            </div>
+            <button id="do-roll-off-btn" class="action-btn hidden" style="width:100%; background:var(--pen-color); color:white;">Roll Die 🎲</button>
+        </div>
+    </div>
+
     <!-- MAIN GAME (Hidden until started) -->
     <div id="game-board" class="hidden">
         <div id="device-control">
@@ -1010,6 +1064,11 @@
         const multiplayerError = document.getElementById('multiplayer-error');
         const startMultiplayerBtn = document.getElementById('start-multiplayer-btn');
 
+        const rollOffOverlay = document.getElementById('roll-off-overlay');
+        const rollOffMsg = document.getElementById('roll-off-msg');
+        const rollOffList = document.getElementById('roll-off-list');
+        const doRollOffBtn = document.getElementById('do-roll-off-btn');
+
         let assignedPlayerIndex = null;
         let latestState = null;
         let joinedMultiplayer = false;
@@ -1026,9 +1085,9 @@
                 deviceBadge.textContent = '👀 Watching';
             }
 
-            // FIX: Show the leave button for BOTH local and multiplayer games
+            // Show the leave button for BOTH local and multiplayer games
             const isGameActive = (latestState?.mode === 'multiplayer' || latestState?.mode === 'local') &&
-                ['PLAYING', 'GAME_OVER', 'ABANDONED'].includes(latestState?.status);
+                ['PLAYING', 'GAME_OVER', 'ABANDONED', 'ROLL_OFF'].includes(latestState?.status);
             leaveGameBtn.classList.toggle('hidden', !isGameActive);
         }
 
@@ -1045,6 +1104,7 @@
             scorecardPanel.classList.remove('open');
             toggleScoreBtn.textContent = '📋 Scorecard';
             toggleScoreBtn.style.backgroundColor = 'var(--pen-color)';
+            rollOffOverlay.classList.add('hidden');
         }
 
         function returnToMainMenuAfterGame() {
@@ -1160,7 +1220,6 @@
         });
 
         leaveGameBtn.addEventListener('click', () => {
-            // FIX: Removed the rule blocking this from working in local mode
             if (!latestState) return; 
             if (!confirm('Leave this game?')) return;
             leaveGameBtn.disabled = true;
@@ -1194,8 +1253,6 @@
             multiplayerError.textContent = '';
             leaveLobbyBtn.disabled = false;
             leaveLobbyBtn.textContent = 'Leave Lobby';
-            // Stay inside Multiplayer so the player can change their name and rejoin,
-            // or use Back to return to the main menu.
             window.showMenu('multiplayer');
         });
 
@@ -1248,6 +1305,12 @@
         bankBtn.onclick = () => { socket.emit('bank-score'); };
         bankAllBtn.onclick = () => { socket.emit('bank-all'); }; 
         document.getElementById('play-again-btn').onclick = () => { socket.emit('play-again'); };
+        
+        // Connect the new Roll-Off UI button
+        doRollOffBtn.onclick = () => { 
+            doRollOffBtn.disabled = true;
+            socket.emit('roll-off'); 
+        };
 
         function initDice() {
             if (sceneElements.length > 0) return;
@@ -1295,22 +1358,17 @@
             const ch = container.clientHeight || 400;
             const isPhone = cw < 600;
 
-            // Loose dice are slightly smaller on a phone.  Keep the same 80px
-            // cube on desktop, but use its visible scaled size for collision checks.
             const scale = isPhone ? 0.72 : 1;
             const dieSize = 80 * scale;
             const padding = isPhone ? 10 : 20;
             const gap = isPhone ? 10 : 18;
 
-            // Leave the bottom of the dice area clear for the six-slot rack.
             const rackReserve = isPhone ? 115 : 150;
             const maxX = Math.max(padding, cw - dieSize - padding);
             const maxY = Math.max(padding, ch - rackReserve - dieSize);
 
             let chosen = null;
 
-            // Try random locations, but reject any location that would overlap
-            // another loose die. This fixes the phone pile-up.
             for (let attempt = 0; attempt < 100; attempt++) {
                 const candidate = {
                     x: padding + Math.random() * Math.max(0, maxX - padding),
@@ -1335,8 +1393,6 @@
                 }
             }
 
-            // Very small screens can run out of random room. Fall back to a
-            // predictable grid instead of allowing dice to stack on each other.
             if (!chosen) {
                 const cell = dieSize + gap;
                 const columns = Math.max(1, Math.floor((cw - padding * 2 + gap) / cell));
@@ -1461,9 +1517,11 @@
             const isMyTurn = state.status === 'PLAYING' && assignedPlayerIndex !== null && assignedPlayerIndex === state.currentPlayer;
 
             for (let i = 0; i < 6; i++) {
-                sceneElements[i].classList.toggle('held', state.heldDice[i]);
-                sceneElements[i].classList.toggle('locked', state.lockedDice[i]);
-                sceneElements[i].classList.toggle('device-disabled', !isMyTurn);
+                if(sceneElements[i]) {
+                    sceneElements[i].classList.toggle('held', state.heldDice[i]);
+                    sceneElements[i].classList.toggle('locked', state.lockedDice[i]);
+                    sceneElements[i].classList.toggle('device-disabled', !isMyTurn);
+                }
             }
             repositionDice(state);
 
@@ -1498,7 +1556,7 @@
                 });
             }
 
-            // --- NEW BUTTON DISPLAY LOGIC ---
+            // BUTTON DISPLAY LOGIC
             const playAgainBtn = document.getElementById('play-again-btn');
 
             if (state.status === 'GAME_OVER') {
@@ -1534,7 +1592,6 @@
                         bankBtn.disabled = true;
                         bankAllBtn.disabled = true; 
                     } else {
-                        // Enable Bank All as long as they have rolled this turn
                         bankAllBtn.disabled = false; 
                     }
                 } else {
@@ -1558,10 +1615,55 @@
                 return;
             }
 
+            // --- ROLL-OFF OVERLAY LOGIC ---
+            if (state.status === 'ROLL_OFF') {
+                document.getElementById('menu-screen').style.display = 'none';
+                document.getElementById('game-board').classList.remove('hidden');
+                rollOffOverlay.classList.remove('hidden');
+                updateDeviceBadge();
+                
+                rollOffMsg.textContent = state.message;
+                rollOffList.innerHTML = '';
+                
+                let myRollScore = null;
+                
+                state.playersData.forEach((p, i) => {
+                    const row = document.createElement('div');
+                    row.className = 'roll-off-row' + (i === assignedPlayerIndex ? ' you' : '');
+                    
+                    const nameSpan = document.createElement('span');
+                    nameSpan.textContent = p.name;
+                    row.appendChild(nameSpan);
+                    
+                    const scoreSpan = document.createElement('span');
+                    if (p.rollOffVal === -1) {
+                        scoreSpan.className = 'roll-off-score eliminated';
+                        scoreSpan.textContent = 'Out';
+                    } else {
+                        scoreSpan.className = 'roll-off-score';
+                        scoreSpan.textContent = p.rollOffVal === null ? '?' : p.rollOffVal;
+                    }
+                    row.appendChild(scoreSpan);
+                    rollOffList.appendChild(row);
+
+                    if (i === assignedPlayerIndex) myRollScore = p.rollOffVal;
+                });
+
+                if (assignedPlayerIndex !== null && myRollScore === null) {
+                    doRollOffBtn.classList.remove('hidden');
+                    doRollOffBtn.disabled = false;
+                } else {
+                    doRollOffBtn.classList.add('hidden');
+                }
+                return;
+            }
+
+            // --- MAIN PLAYING LOGIC ---
             if (state.status === 'PLAYING' || state.status === 'GAME_OVER' || state.status === 'ABANDONED') {
                 document.getElementById('menu-screen').style.display = 'none';
                 document.getElementById('game-board').classList.remove('hidden');
                 document.getElementById('scorecard-panel').classList.remove('hidden');
+                rollOffOverlay.classList.add('hidden');
 
                 if (sceneElements.length === 0) {
                     buildDynamicScorecard(state.playersData);

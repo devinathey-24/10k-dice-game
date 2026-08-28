@@ -69,11 +69,9 @@ function broadcastLobby() {
 
 function removeFromLobby(socket) {
     const wasInLobby = lobbyPlayers.delete(socket.id);
-
     if (lobbyHostSocketId === socket.id) {
         lobbyHostSocketId = lobbyPlayers.keys().next().value || null;
     }
-
     socket.emit('lobby-left');
     broadcastLobby();
     return wasInLobby;
@@ -108,35 +106,85 @@ function resetToSetup() {
     io.emit('sync-state', gameState);
 }
 
-// --- NEW ROLL-OFF LOGIC ---
-function determineFirstPlayer(players) {
-    let maxRoll = 0;
-    let winners = [];
-    let rollText = [];
+// --- ROLL-OFF MINI GAME LOGIC ---
+function triggerCpuRollOff() {
+    if (gameState.status !== 'ROLL_OFF') return;
+    
+    gameState.playersData.forEach((p, i) => {
+        if (p.type === 'cpu' && p.rollOffVal === null) {
+            // Give the CPUs a natural 1-2 second delay before they "click" to roll
+            setTimeout(() => {
+                if (gameState.status === 'ROLL_OFF' && p.rollOffVal === null) {
+                    p.rollOffVal = crypto.randomInt(1, 7);
+                    io.emit('sync-state', gameState);
+                    checkRollOffCompletion();
+                }
+            }, crypto.randomInt(800, 2000));
+        }
+    });
+}
 
-    // Loop until there is only ONE winner (handles ties automatically by rerolling)
-    while (winners.length !== 1) {
-        maxRoll = 0;
-        winners = [];
-        rollText = [];
-        
-        for (let i = 0; i < players.length; i++) {
-            let roll = crypto.randomInt(1, 7);
-            rollText.push(`${players[i].name} (${roll})`);
-            
-            if (roll > maxRoll) {
-                maxRoll = roll;
-                winners = [i];
-            } else if (roll === maxRoll) {
-                winners.push(i);
+function checkRollOffCompletion() {
+    if (gameState.status !== 'ROLL_OFF') return;
+
+    // Check if all players who are actively in this round have rolled
+    const allRolled = gameState.playersData.every(p => p.rollOffVal !== null);
+    if (!allRolled) return;
+
+    let maxRoll = -1;
+    let tiedIndices = [];
+
+    // Find the highest roll among active participants
+    gameState.playersData.forEach((p, i) => {
+        if (p.rollOffVal !== -1) { // -1 means eliminated
+            if (p.rollOffVal > maxRoll) {
+                maxRoll = p.rollOffVal;
+                tiedIndices = [i];
+            } else if (p.rollOffVal === maxRoll) {
+                tiedIndices.push(i);
             }
         }
+    });
+
+    if (tiedIndices.length === 1) {
+        // We have a definitive winner!
+        const winnerIndex = tiedIndices[0];
+        gameState.message = `${gameState.playersData[winnerIndex].name} won the roll-off!`;
+        io.emit('sync-state', gameState);
+        
+        isTransitioning = true;
+        
+        // Wait 3 seconds so everyone can see the final results, then start the main game
+        setTimeout(() => {
+            gameState.status = 'PLAYING';
+            gameState.currentPlayer = winnerIndex;
+            gameState.message = `${gameState.playersData[winnerIndex].name}'s turn! Roll the dice.`;
+            isTransitioning = false;
+            io.emit('sync-state', gameState);
+            triggerCpuTurn();
+        }, 3000);
+
+    } else {
+        // We have a tie! Eliminate the losers and force a re-roll
+        gameState.message = "TIE! Sudden death re-roll for the winners!";
+        io.emit('sync-state', gameState);
+        
+        isTransitioning = true;
+
+        setTimeout(() => {
+            gameState.playersData.forEach((p, i) => {
+                if (tiedIndices.includes(i)) {
+                    p.rollOffVal = null; // Re-enter the ring
+                } else {
+                    p.rollOffVal = -1;   // Eliminated
+                }
+            });
+            gameState.message = "Roll to break the tie!";
+            isTransitioning = false;
+            io.emit('sync-state', gameState);
+            triggerCpuRollOff(); // Re-trigger the CPUs if they are in the tie-breaker
+        }, 3000);
     }
-    
-    return {
-        winnerIndex: winners[0],
-        message: `Roll-off: ${rollText.join(', ')}. ${players[winners[0]].name} starts!`
-    };
 }
 
 function resetAndStartGame(players, mode) {
@@ -145,15 +193,14 @@ function resetAndStartGame(players, mode) {
     io.emit('assignment-reset');
     isTransitioning = false;
 
-    // BAD LUCK PROTECTION: Initialize the streak tracker for all players
-    players.forEach(p => p.consecutiveBusts = 0);
-
-    const rollOff = determineFirstPlayer(players);
+    players.forEach(p => {
+        p.consecutiveBusts = 0;
+        p.rollOffVal = null; // Start the roll-off phase
+    });
 
     gameState.mode = mode;
     gameState.playersData = players;
-    gameState.status = 'PLAYING';
-    gameState.currentPlayer = rollOff.winnerIndex;
+    gameState.status = 'ROLL_OFF';
     gameState.turnScore = 0;
     gameState.currentRollScore = 0;
     gameState.isLastTurn = false;
@@ -162,7 +209,7 @@ function resetAndStartGame(players, mode) {
     gameState.diceValues = [1, 1, 1, 1, 1, 1];
     gameState.lockedDice.fill(false);
     gameState.heldDice.fill(false);
-    gameState.message = rollOff.message;
+    gameState.message = "Roll your die to see who goes first!";
 }
 
 function getAssignmentSnapshot() {
@@ -192,7 +239,7 @@ function releasePlayer(socket, notifySocket = true) {
 }
 
 function claimPlayer(socket, playerIndex) {
-    if (gameState.status !== 'PLAYING' && gameState.status !== 'GAME_OVER') {
+    if (gameState.status !== 'PLAYING' && gameState.status !== 'GAME_OVER' && gameState.status !== 'ROLL_OFF') {
         socket.emit('claim-denied', 'Start the game before choosing a player.');
         return false;
     }
@@ -268,7 +315,6 @@ function calculateScore(values) {
     return score;
 }
 
-// --- DYNAMIC MESSAGE LOGIC ---
 function getWinningTarget() {
     return Math.max(...gameState.playersData.map(p => p.totalScore));
 }
@@ -298,7 +344,6 @@ function updateActiveMessage() {
     }
 }
 
-// --- CORE RULE EXECUTION ---
 function executeRoll() {
     if (gameState.status !== 'PLAYING') return false;
 
@@ -324,7 +369,6 @@ function executeRoll() {
     let currentRollValues = [];
     let isBust = true;
     
-    // BAD LUCK PROTECTION: Secret background rerolls if on a losing streak
     let maxAttempts = p.consecutiveBusts >= 2 ? 3 : 1; 
     let attempts = 0;
 
@@ -355,7 +399,7 @@ function executeRoll() {
     let pName = p.name;
 
     if (isBust) {
-        p.consecutiveBusts++; // Streak continues
+        p.consecutiveBusts++; 
         gameState.message = `${pName} BUSTED! Turn over.`;
         gameState.turnScore = 0;
         gameState.currentRollScore = 0;
@@ -390,7 +434,6 @@ function executeToggleHold(index) {
 }
 
 function executeBank() {
-    // BAD LUCK PROTECTION: Reset the streak tracker because they scored
     gameState.playersData[gameState.currentPlayer].consecutiveBusts = 0;
 
     gameState.turnScore += gameState.currentRollScore;
@@ -566,7 +609,7 @@ function cpuShouldBank() {
 
 function leaveActiveMultiplayerGame(socket, disconnected = false) {
     if (gameState.mode !== 'multiplayer' ||
-        !['PLAYING', 'GAME_OVER', 'ABANDONED'].includes(gameState.status)) {
+        !['PLAYING', 'GAME_OVER', 'ABANDONED', 'ROLL_OFF'].includes(gameState.status)) {
         if (!disconnected) socket.emit('left-game');
         return false;
     }
@@ -579,7 +622,7 @@ function leaveActiveMultiplayerGame(socket, disconnected = false) {
     }
 
     const playerName = gameState.playersData[playerIndex]?.name || 'A PLAYER';
-    const wasPlaying = gameState.status === 'PLAYING';
+    const wasPlaying = gameState.status === 'PLAYING' || gameState.status === 'ROLL_OFF';
 
     releasePlayer(socket, false);
 
@@ -661,7 +704,9 @@ io.on('connection', (socket) => {
         claimPlayer(socket, 0);
         io.emit('sync-state', gameState);
         broadcastAssignments();
-        triggerCpuTurn();
+        
+        // Trigger CPU rolls for the mini-game
+        triggerCpuRollOff();
     });
 
     socket.on('start-multiplayer-game', () => {
@@ -711,6 +756,24 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- NEW ROLL-OFF LISTENER ---
+    socket.on('roll-off', () => {
+        if (gameState.status !== 'ROLL_OFF') return;
+        if (isTransitioning) return;
+        
+        const playerIndex = socketAssignments.get(socket.id);
+        if (playerIndex === undefined) return;
+        
+        let p = gameState.playersData[playerIndex];
+        
+        // Ensure they are eligible to roll (not eliminated in a tie breaker, and haven't rolled yet)
+        if (p.rollOffVal !== null) return;
+
+        p.rollOffVal = crypto.randomInt(1, 7);
+        io.emit('sync-state', gameState);
+        checkRollOffCompletion();
+    });
+
     socket.on('roll-dice', () => {
         if (!canControlCurrentPlayer(socket)) {
             socket.emit('action-denied', 'It is not your turn.');
@@ -741,19 +804,15 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Fire the CPU logic to automatically hold all remaining point-yielding dice
         holdCpuDice();
-
         let p = gameState.playersData[gameState.currentPlayer];
         let potentialTotal = gameState.turnScore + gameState.currentRollScore;
 
-        // Make sure there are actually points to bank
         if (gameState.currentRollScore === 0) {
             socket.emit('action-denied', 'No scoring dice available to bank!');
             return;
         }
 
-        // Make sure they meet the 1000 point requirement if they aren't on the board
         if (!p.isOnBoard && potentialTotal < 1000) {
             socket.emit('action-denied', `You need 1,000 points to get on the board. You only have ${potentialTotal}.`);
             return;
@@ -769,12 +828,10 @@ io.on('connection', (socket) => {
             p.totalScore = 0;
             p.isOnBoard = false;
             p.consecutiveBusts = 0;
+            p.rollOffVal = null; // Re-enter the roll-off
         });
 
-        const rollOff = determineFirstPlayer(gameState.playersData);
-
-        gameState.status = 'PLAYING';
-        gameState.currentPlayer = rollOff.winnerIndex;
+        gameState.status = 'ROLL_OFF';
         gameState.turnScore = 0;
         gameState.currentRollScore = 0;
         gameState.isLastTurn = false;
@@ -783,12 +840,12 @@ io.on('connection', (socket) => {
         gameState.diceValues = [1, 1, 1, 1, 1, 1];
         gameState.lockedDice.fill(false);
         gameState.heldDice.fill(false);
-        gameState.message = rollOff.message;
+        gameState.message = "Roll your die to see who goes first!";
         isTransitioning = false;
 
         io.emit('game-restarted');
         io.emit('sync-state', gameState);
-        triggerCpuTurn(); 
+        triggerCpuRollOff(); 
     });
 
     socket.on('disconnect', () => {
@@ -803,7 +860,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// Render provides its own port via process.env.PORT
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
