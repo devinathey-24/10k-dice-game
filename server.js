@@ -197,7 +197,7 @@ function claimPlayer(socket, playerIndex) {
 
 function canControlCurrentPlayer(socket) {
     if (gameState.status !== 'PLAYING') return false;
-    if (isTransitioning) return false; // Prevent double-clicks during the 2-second turn delay
+    if (isTransitioning) return false; 
     
     const assignedIndex = socketAssignments.get(socket.id);
     return assignedIndex === gameState.currentPlayer &&
@@ -331,7 +331,6 @@ function executeRoll() {
         io.emit('bust', gameState.currentPlayer); 
         io.emit('sync-state', gameState);
         
-        // Lock inputs during the delay
         isTransitioning = true;
         setTimeout(() => { 
             isTransitioning = false;
@@ -378,7 +377,6 @@ function executeBank() {
     io.emit('banked', { playerIndex: gameState.currentPlayer, score: gameState.turnScore });
     io.emit('sync-state', gameState);
 
-    // Lock inputs during the delay
     isTransitioning = true;
     setTimeout(() => {
         gameState.turnScore = 0;
@@ -756,6 +754,7 @@ io.on('connection', (socket) => {
         gameState.message = `${gameState.playersData[0].name}'s turn! Roll the dice.`;
         isTransitioning = false;
 
+        io.emit('game-restarted');
         io.emit('sync-state', gameState);
         triggerCpuTurn(); 
     });

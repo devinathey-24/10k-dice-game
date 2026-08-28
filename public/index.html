@@ -1619,6 +1619,10 @@
                 toggleScoreBtn.click();
             }
         });
+
+        socket.on('game-restarted', () => {
+            resetClientGameUI();
+        });
     </script>
 </body>
 </html>
