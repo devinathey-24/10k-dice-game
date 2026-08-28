@@ -25,6 +25,9 @@ let gameState = {
     message: "Waiting to start..."
 };
 
+// --- SPAM PREVENTION LOCK ---
+let isTransitioning = false; 
+
 // Each human player can be controlled by only one connected device.
 const socketAssignments = new Map(); 
 const playerSockets = new Map();     
@@ -85,6 +88,7 @@ function resetToSetup() {
     clearLobby();
     socketAssignments.clear();
     playerSockets.clear();
+    isTransitioning = false;
 
     gameState.status = 'SETUP';
     gameState.mode = null;
@@ -108,6 +112,7 @@ function resetAndStartGame(players, mode) {
     socketAssignments.clear();
     playerSockets.clear();
     io.emit('assignment-reset');
+    isTransitioning = false;
 
     // BAD LUCK PROTECTION: Initialize the streak tracker for all players
     players.forEach(p => p.consecutiveBusts = 0);
@@ -192,6 +197,8 @@ function claimPlayer(socket, playerIndex) {
 
 function canControlCurrentPlayer(socket) {
     if (gameState.status !== 'PLAYING') return false;
+    if (isTransitioning) return false; // Prevent double-clicks during the 2-second turn delay
+    
     const assignedIndex = socketAssignments.get(socket.id);
     return assignedIndex === gameState.currentPlayer &&
            gameState.playersData[gameState.currentPlayer]?.type === 'human';
@@ -324,7 +331,12 @@ function executeRoll() {
         io.emit('bust', gameState.currentPlayer); 
         io.emit('sync-state', gameState);
         
-        setTimeout(() => { nextTurn(); }, 2000);
+        // Lock inputs during the delay
+        isTransitioning = true;
+        setTimeout(() => { 
+            isTransitioning = false;
+            nextTurn(); 
+        }, 2000);
         return false; 
     }
 
@@ -366,9 +378,12 @@ function executeBank() {
     io.emit('banked', { playerIndex: gameState.currentPlayer, score: gameState.turnScore });
     io.emit('sync-state', gameState);
 
+    // Lock inputs during the delay
+    isTransitioning = true;
     setTimeout(() => {
         gameState.turnScore = 0;
         gameState.currentRollScore = 0;
+        isTransitioning = false;
         nextTurn();
     }, 2000);
 }
@@ -739,6 +754,7 @@ io.on('connection', (socket) => {
         gameState.lockedDice.fill(false);
         gameState.heldDice.fill(false);
         gameState.message = `${gameState.playersData[0].name}'s turn! Roll the dice.`;
+        isTransitioning = false;
 
         io.emit('sync-state', gameState);
         triggerCpuTurn(); 
