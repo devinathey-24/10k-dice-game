@@ -122,8 +122,50 @@
             position: relative;
         }
 
-
         .hidden { display: none !important; }
+
+        /* --- NEW ROLL-OFF OVERLAY --- */
+        #roll-off-overlay {
+            position: absolute; 
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 85;
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center;
+        }
+
+        .roll-off-row {
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            background: #f2f6ff; 
+            border: 2px solid #d6e2ff; 
+            padding: 12px 20px;
+            border-radius: 10px; 
+            font-size: 1.3rem; 
+            font-weight: bold; 
+            color: #222;
+        }
+
+        .roll-off-row.you { 
+            border-color: var(--pen-color); 
+            background: #e8eefc; 
+        }
+
+        .roll-off-score { 
+            font-family: 'Covered By Your Grace', cursive; 
+            font-size: 2.5rem; 
+            color: var(--pen-color); 
+            line-height: 1; 
+        }
+
+        .roll-off-score.eliminated {
+            color: #d13434;
+            text-decoration: line-through;
+            opacity: 0.5;
+        }
 
         /* --- MULTIPLAYER DEVICE / PLAYER PICKER --- */
         #device-menu {
@@ -881,6 +923,18 @@
         </div>
     </div>
 
+    <!-- ROLL OFF OVERLAY -->
+    <div id="roll-off-overlay" class="hidden">
+        <div class="menu-box" style="width: 500px;">
+            <h2 style="font-family:'Pacifico', cursive; color:var(--pen-color); font-size:3rem; margin-top:0;">Roll for First!</h2>
+            <div id="roll-off-msg" style="font-size:1.2rem; font-weight:bold; margin-bottom:20px; color:#333;">Waiting for players...</div>
+            <div id="roll-off-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:25px; text-align:left;">
+                <!-- Dynamically populated -->
+            </div>
+            <button id="do-roll-off-btn" class="action-btn hidden" style="width:100%; background:var(--pen-color); color:white;">Roll Die 🎲</button>
+        </div>
+    </div>
+
     <!-- MAIN GAME (Hidden until started) -->
     <div id="game-board" class="hidden">
         <div id="device-control">
@@ -1010,6 +1064,11 @@
         const multiplayerError = document.getElementById('multiplayer-error');
         const startMultiplayerBtn = document.getElementById('start-multiplayer-btn');
 
+        const rollOffOverlay = document.getElementById('roll-off-overlay');
+        const rollOffMsg = document.getElementById('roll-off-msg');
+        const rollOffList = document.getElementById('roll-off-list');
+        const doRollOffBtn = document.getElementById('do-roll-off-btn');
+
         let assignedPlayerIndex = null;
         let latestState = null;
         let joinedMultiplayer = false;
@@ -1045,6 +1104,7 @@
             scorecardPanel.classList.remove('open');
             toggleScoreBtn.textContent = '📋 Scorecard';
             toggleScoreBtn.style.backgroundColor = 'var(--pen-color)';
+            rollOffOverlay.classList.add('hidden');
         }
 
         function returnToMainMenuAfterGame() {
@@ -1246,6 +1306,12 @@
         bankAllBtn.onclick = () => { socket.emit('bank-all'); }; 
         rollOffBtn.onclick = () => { socket.emit('roll-off'); };
         document.getElementById('play-again-btn').onclick = () => { socket.emit('play-again'); };
+        
+        // Connect the new Roll-Off UI button
+        doRollOffBtn.onclick = () => { 
+            doRollOffBtn.disabled = true;
+            socket.emit('roll-off'); 
+        };
 
         function initDice() {
             if (sceneElements.length > 0) return;
@@ -1384,7 +1450,7 @@
                 const gap = 30;
                 const totalW = (activeCount * slotW) + ((activeCount - 1) * gap);
                 
-                // Line them perfectly up in the center of the TV
+                // Line them perfectly up in the center of the display
                 const startX = (cw - totalW) / 2;
                 const startY = (ch - slotW) / 2;
 
@@ -1403,16 +1469,15 @@
             }
 
             // --- REGULAR GAMEPLAY DISPLAY RULES ---
-            let heldCount = 0;
             for (let i = 0; i < 6; i++) {
                 sceneElements[i].style.display = 'block'; 
                 
                 if (state.heldDice[i] || state.lockedDice[i]) {
-                    let pos = getRackPos(heldCount);
+                    // Map each die to its own fixed rack slot to keep them in order
+                    let pos = getRackPos(i);
                     sceneElements[i].style.left = pos.x + 'px';
                     sceneElements[i].style.top = pos.y + 'px';
                     sceneElements[i].style.transform = `scale(${rackScale})`;
-                    heldCount++;
                 } else {
                     sceneElements[i].style.left = scatterPositions[i].x + 'px';
                     sceneElements[i].style.top = scatterPositions[i].y + 'px';
