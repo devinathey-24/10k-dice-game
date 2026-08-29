@@ -1077,6 +1077,9 @@
 
         let scatterPositions = [ {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0} ];
         let diceRotations = [ {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0} ];
+        
+        // NEW: Track chronological order of held dice
+        let rackSequence = [];
 
         function updateDeviceBadge() {
             if (assignedPlayerIndex !== null && latestState?.playersData?.[assignedPlayerIndex]) {
@@ -1100,6 +1103,7 @@
             unpennedEls = [];
             scatterPositions = [ {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0} ];
             diceRotations = [ {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0} ];
+            rackSequence = [];
             document.getElementById('scorecard-container').innerHTML = '';
             scorecardPanel.classList.remove('open');
             toggleScoreBtn.textContent = '📋 Scorecard';
@@ -1469,12 +1473,26 @@
             }
 
             // --- REGULAR GAMEPLAY DISPLAY RULES ---
+            
+            // Clean up the sequence: Remove dice that are no longer held/locked
+            rackSequence = rackSequence.filter(i => state.heldDice[i] || state.lockedDice[i]);
+            
+            // Add newly held/locked dice to the end of the sequence
+            for (let i = 0; i < 6; i++) {
+                if (state.heldDice[i] || state.lockedDice[i]) {
+                    if (!rackSequence.includes(i)) {
+                        rackSequence.push(i);
+                    }
+                }
+            }
+
             for (let i = 0; i < 6; i++) {
                 sceneElements[i].style.display = 'block'; 
                 
                 if (state.heldDice[i] || state.lockedDice[i]) {
-                    // Map each die to its own fixed rack slot to keep them in order
-                    let pos = getRackPos(i);
+                    // Position die in the chronological slot order
+                    let slotIndex = rackSequence.indexOf(i);
+                    let pos = getRackPos(slotIndex);
                     sceneElements[i].style.left = pos.x + 'px';
                     sceneElements[i].style.top = pos.y + 'px';
                     sceneElements[i].style.transform = `scale(${rackScale})`;
@@ -1752,6 +1770,8 @@
         });
 
         socket.on('new-turn', () => {
+            // Reset chronological tracking whenever a fresh set of 6 dice is rolled
+            rackSequence = [];
             for (let i = 0; i < 6; i++) { generateScatterPosition(i); }
         });
         
