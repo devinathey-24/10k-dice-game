@@ -12,6 +12,7 @@ app.use(express.static('public'));
 let gameState = {
     status: 'SETUP', 
     mode: null,
+    ruleset: 'standard', // Tracks Standard vs Mom's Rules
     playersData: [],
     currentPlayer: 0,
     diceValues: [1, 1, 1, 1, 1, 1],
@@ -35,6 +36,7 @@ const playerSockets = new Map();
 // Multiplayer lobby
 const lobbyPlayers = new Map(); 
 let lobbyHostSocketId = null;
+let lobbyRuleset = 'standard'; 
 const MAX_MULTIPLAYER_PLAYERS = 4;
 
 function normalizeName(value) {
@@ -55,6 +57,7 @@ function getLobbyPayload(forSocketId) {
         maxPlayers: MAX_MULTIPLAYER_PLAYERS,
         isHost: forSocketId === lobbyHostSocketId,
         canStart: forSocketId === lobbyHostSocketId && playerCount >= 2,
+        ruleset: lobbyRuleset,
         players
     };
 }
@@ -82,6 +85,7 @@ function removeFromLobby(socket) {
 function clearLobby() {
     lobbyPlayers.clear();
     lobbyHostSocketId = null;
+    lobbyRuleset = 'standard';
 }
 
 function resetToSetup() {
@@ -92,6 +96,7 @@ function resetToSetup() {
 
     gameState.status = 'SETUP';
     gameState.mode = null;
+    gameState.ruleset = 'standard';
     gameState.playersData = [];
     gameState.currentPlayer = 0;
     gameState.diceValues = [1, 1, 1, 1, 1, 1];
@@ -114,12 +119,11 @@ function triggerCpuRollOff() {
     
     gameState.playersData.forEach((p, i) => {
         if (p.type === 'cpu' && p.rollOffVal === null) {
-            // Give CPUs a natural delay so it feels like they are thinking
             setTimeout(() => {
                 if (gameState.status === 'ROLL_OFF' && p.rollOffVal === null) {
                     let roll = crypto.randomInt(1, 7);
                     p.rollOffVal = roll;
-                    gameState.diceValues[i] = roll; // Assign die 'i' to player 'i'
+                    gameState.diceValues[i] = roll; 
                     
                     io.emit('roll-off-dice-rolled', { playerIndex: i, val: roll });
                     io.emit('sync-state', gameState);
@@ -133,7 +137,6 @@ function triggerCpuRollOff() {
 function checkRollOffCompletion() {
     if (gameState.status !== 'ROLL_OFF') return;
 
-    // Check if everyone still active in the roll-off has rolled
     const activePlayers = gameState.playersData.filter(p => p.rollOffVal !== -1);
     const allRolled = activePlayers.every(p => p.rollOffVal !== null);
     if (!allRolled) return;
@@ -153,20 +156,17 @@ function checkRollOffCompletion() {
     });
 
     if (tiedIndices.length === 1) {
-        // We have a definitive winner!
         const winnerIndex = tiedIndices[0];
         gameState.message = `${gameState.playersData[winnerIndex].name} won the roll-off!`;
         io.emit('sync-state', gameState);
         
         isTransitioning = true;
         
-        // Let everyone look at the final dice for 3 seconds before starting the game
         setTimeout(() => {
             gameState.status = 'PLAYING';
             gameState.currentPlayer = winnerIndex;
             gameState.message = `${gameState.playersData[winnerIndex].name}'s turn! Roll the dice.`;
             
-            // Visually shuffle all 6 dice so they scatter dynamically
             for(let i=0; i<6; i++) {
                 gameState.diceValues[i] = crypto.randomInt(1,7);
             }
@@ -178,7 +178,6 @@ function checkRollOffCompletion() {
         }, 3000);
 
     } else {
-        // Tie! Eliminate the losers and re-roll the winners
         gameState.message = "TIE! Sudden death re-roll for the winners!";
         io.emit('sync-state', gameState);
         
@@ -187,9 +186,9 @@ function checkRollOffCompletion() {
         setTimeout(() => {
             gameState.playersData.forEach((p, i) => {
                 if (tiedIndices.includes(i)) {
-                    p.rollOffVal = null; // Still in
+                    p.rollOffVal = null; 
                 } else {
-                    p.rollOffVal = -1;   // Eliminated (die disappears)
+                    p.rollOffVal = -1;   
                 }
             });
             gameState.message = "Roll your die to break the tie!";
@@ -200,7 +199,7 @@ function checkRollOffCompletion() {
     }
 }
 
-function resetAndStartGame(players, mode) {
+function resetAndStartGame(players, mode, ruleset) {
     socketAssignments.clear();
     playerSockets.clear();
     io.emit('assignment-reset');
@@ -208,10 +207,11 @@ function resetAndStartGame(players, mode) {
 
     players.forEach(p => {
         p.consecutiveBusts = 0;
-        p.rollOffVal = null; // Start the roll-off phase
+        p.rollOffVal = null; 
     });
 
     gameState.mode = mode;
+    gameState.ruleset = ruleset || 'standard';
     gameState.playersData = players;
     gameState.status = 'ROLL_OFF';
     gameState.turnScore = 0;
@@ -297,15 +297,17 @@ function canControlCurrentPlayer(socket) {
            gameState.playersData[gameState.currentPlayer]?.type === 'human';
 }
 
-function calculateScore(values) {
+function calculateScore(values, ruleset) {
     if (values.length === 0) return 0;
-    let score = 0;
+    let standardScore = 0;
     const counts = [0, 0, 0, 0, 0, 0];
     
     values.forEach(v => counts[v - 1]++);
 
+    // Large straight (Standard in both modes)
     if (counts.every(c => c === 1)) return 1500; 
 
+    // Compute base standard score for fallback
     for (let i = 0; i < 6; i++) {
         let count = counts[i];
         let faceValue = i + 1;
@@ -316,16 +318,43 @@ function calculateScore(values) {
             if (count === 4) multiplier = 2;
             if (count === 5) multiplier = 3;
             if (count === 6) multiplier = 4;
-            score += base * multiplier;
+            standardScore += base * multiplier;
         } 
         else if (faceValue === 1) {
-            score += count * 100; 
+            standardScore += count * 100; 
         } 
         else if (faceValue === 5) {
-            score += count * 50;
+            standardScore += count * 50;
         }
     }
-    return score;
+
+    // --- MOM'S RULES OVERRIDES ---
+    if (ruleset === 'moms') {
+        // 3 Pairs in a full roll
+        if (values.length === 6 && counts.filter(c => c === 2).length === 3) return Math.max(1500, standardScore);
+        
+        // 2 Sets of 3 of a kind
+        if (values.length === 6 && counts.filter(c => c === 3).length === 2) return Math.max(1200, standardScore);
+
+        // Small Straight (1-5 or 2-6)
+        let hasLowSmall = counts[0]>=1 && counts[1]>=1 && counts[2]>=1 && counts[3]>=1 && counts[4]>=1;
+        let hasHighSmall = counts[1]>=1 && counts[2]>=1 && counts[3]>=1 && counts[4]>=1 && counts[5]>=1;
+        
+        if (hasLowSmall || hasHighSmall) {
+            let tempScore = 750;
+            let extraCounts = [...counts];
+            if (hasLowSmall) {
+                extraCounts[0]--; extraCounts[1]--; extraCounts[2]--; extraCounts[3]--; extraCounts[4]--;
+            } else {
+                extraCounts[1]--; extraCounts[2]--; extraCounts[3]--; extraCounts[4]--; extraCounts[5]--;
+            }
+            // Add points for any leftover 1s or 5s included in the 6th die
+            tempScore += (extraCounts[0] * 100) + (extraCounts[4] * 50);
+            return Math.max(tempScore, standardScore);
+        }
+    }
+
+    return standardScore;
 }
 
 // --- DYNAMIC MESSAGE LOGIC ---
@@ -384,7 +413,6 @@ function executeRoll() {
     let currentRollValues = [];
     let isBust = true;
     
-    // BAD LUCK PROTECTION: Secret background rerolls if on a losing streak
     let maxAttempts = p.consecutiveBusts >= 2 ? 3 : 1; 
     let attempts = 0;
 
@@ -397,7 +425,7 @@ function executeRoll() {
             }
         }
         
-        if (calculateScore(currentRollValues) > 0) {
+        if (calculateScore(currentRollValues, gameState.ruleset) > 0) {
             isBust = false; 
         }
         attempts++;
@@ -415,7 +443,7 @@ function executeRoll() {
     let pName = p.name;
 
     if (isBust) {
-        p.consecutiveBusts++; // Streak continues
+        p.consecutiveBusts++; 
         gameState.message = `${pName} BUSTED! Turn over.`;
         gameState.turnScore = 0;
         gameState.currentRollScore = 0;
@@ -443,14 +471,13 @@ function executeToggleHold(index) {
     gameState.heldDice[index] = !gameState.heldDice[index];
     
     let newlyHeldValues = gameState.diceValues.filter((_, i) => gameState.heldDice[i] && !gameState.lockedDice[i]);
-    gameState.currentRollScore = calculateScore(newlyHeldValues);
+    gameState.currentRollScore = calculateScore(newlyHeldValues, gameState.ruleset);
     
     updateActiveMessage();
     io.emit('sync-state', gameState);
 }
 
 function executeBank() {
-    // BAD LUCK PROTECTION: Reset the streak tracker because they scored
     gameState.playersData[gameState.currentPlayer].consecutiveBusts = 0;
 
     gameState.turnScore += gameState.currentRollScore;
@@ -567,18 +594,52 @@ function triggerCpuTurn() {
 
 function holdCpuDice() {
     let counts = [0, 0, 0, 0, 0, 0];
+    let availableIndicesByValue = {1:[], 2:[], 3:[], 4:[], 5:[], 6:[]};
+    
     for (let i = 0; i < 6; i++) {
-        if (!gameState.lockedDice[i]) counts[gameState.diceValues[i] - 1]++;
+        if (!gameState.lockedDice[i]) {
+            let val = gameState.diceValues[i];
+            counts[val - 1]++;
+            availableIndicesByValue[val].push(i);
+        }
     }
 
+    let isMoms = gameState.ruleset === 'moms';
     let isStraight = counts.every(c => c === 1);
+    let is3Pairs = isMoms && counts.filter(c => c === 2).length === 3;
+    let is2Triplets = isMoms && counts.filter(c => c === 3).length === 2;
+    let hasLowSmall = isMoms && counts[0]>=1 && counts[1]>=1 && counts[2]>=1 && counts[3]>=1 && counts[4]>=1;
+    let hasHighSmall = isMoms && counts[1]>=1 && counts[2]>=1 && counts[3]>=1 && counts[4]>=1 && counts[5]>=1;
 
+    // Auto-hold logic for exact combination overrides
+    if (isStraight || is3Pairs || is2Triplets) {
+        for (let i = 0; i < 6; i++) {
+            if (!gameState.lockedDice[i] && !gameState.heldDice[i]) executeToggleHold(i);
+        }
+        return;
+    }
+
+    if (hasLowSmall || hasHighSmall) {
+        let straightVals = hasLowSmall ? [1,2,3,4,5] : [2,3,4,5,6];
+        straightVals.forEach(val => {
+            let idx = availableIndicesByValue[val][0];
+            if (!gameState.heldDice[idx]) executeToggleHold(idx);
+        });
+        
+        for (let i = 0; i < 6; i++) {
+            if (!gameState.lockedDice[i] && !gameState.heldDice[i]) {
+                let val = gameState.diceValues[i];
+                if (val === 1 || val === 5) executeToggleHold(i);
+            }
+        }
+        return;
+    }
+
+    // Standard AI logic
     for (let i = 0; i < 6; i++) {
         if (!gameState.lockedDice[i] && !gameState.heldDice[i]) {
             let val = gameState.diceValues[i];
-            if (isStraight) {
-                executeToggleHold(i);
-            } else if (val === 1 || val === 5 || counts[val - 1] >= 3) {
+            if (val === 1 || val === 5 || counts[val - 1] >= 3) {
                 executeToggleHold(i);
             }
         }
@@ -694,6 +755,13 @@ io.on('connection', (socket) => {
         removeFromLobby(socket);
     });
 
+    socket.on('change-ruleset', (rule) => {
+        if (socket.id === lobbyHostSocketId) {
+            lobbyRuleset = rule;
+            broadcastLobby();
+        }
+    });
+
     socket.on('start-local-game', (data = {}) => {
         if (gameState.status !== 'SETUP') return;
 
@@ -717,7 +785,7 @@ io.on('connection', (socket) => {
             });
         }
 
-        resetAndStartGame(players, 'local');
+        resetAndStartGame(players, 'local', data.ruleset || 'standard');
         claimPlayer(socket, 0);
         io.emit('sync-state', gameState);
         broadcastAssignments();
@@ -745,7 +813,7 @@ io.on('connection', (socket) => {
             consecutiveBusts: 0 
         }));
 
-        resetAndStartGame(players, 'multiplayer');
+        resetAndStartGame(players, 'multiplayer', lobbyRuleset);
 
         entries.forEach(([socketId], playerIndex) => {
             const playerSocket = io.sockets.sockets.get(socketId);
@@ -772,7 +840,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- NEW ROLL-OFF LISTENER ---
     socket.on('roll-off', () => {
         if (gameState.status !== 'ROLL_OFF') return;
         if (isTransitioning) return;
@@ -781,13 +848,12 @@ io.on('connection', (socket) => {
         if (playerIndex === undefined) return;
         
         let p = gameState.playersData[playerIndex];
-        if (p.rollOffVal !== null) return; // Prevent double-rolling
+        if (p.rollOffVal !== null) return; 
 
         let roll = crypto.randomInt(1, 7);
         p.rollOffVal = roll;
-        gameState.diceValues[playerIndex] = roll; // Sync to visual die
+        gameState.diceValues[playerIndex] = roll; 
         
-        // Spin this specific die immediately
         io.emit('roll-off-dice-rolled', { playerIndex, val: roll });
         io.emit('sync-state', gameState);
         checkRollOffCompletion();
@@ -847,7 +913,7 @@ io.on('connection', (socket) => {
             p.totalScore = 0;
             p.isOnBoard = false;
             p.consecutiveBusts = 0;
-            p.rollOffVal = null; // Re-enter the roll-off
+            p.rollOffVal = null; 
         });
 
         gameState.status = 'ROLL_OFF';

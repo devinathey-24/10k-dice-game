@@ -894,6 +894,13 @@
                     <option value="3">3 CPUs</option>
                 </select>
             </div>
+            <div class="simple-field">
+                <label for="solo-rules">Ruleset</label>
+                <select id="solo-rules">
+                    <option value="standard">Standard Rules</option>
+                    <option value="moms">Mom's Rules</option>
+                </select>
+            </div>
             <button id="start-solo-btn" class="menu-action primary" type="button">Start Game</button>
             <button class="menu-action secondary back-main-btn" type="button">Back</button>
         </div>
@@ -913,6 +920,15 @@
             <div id="lobby-waiting" class="hidden">
                 <div id="lobby-title">Multiplayer Lobby</div>
                 <div id="lobby-status">Waiting for players...</div>
+                
+                <div class="simple-field" style="margin-bottom: 15px;">
+                    <label for="lobby-rules" style="font-size: 0.95rem;">Ruleset (Host Only)</label>
+                    <select id="lobby-rules" disabled>
+                        <option value="standard">Standard Rules</option>
+                        <option value="moms">Mom's Rules</option>
+                    </select>
+                </div>
+
                 <div id="lobby-player-list"></div>
                 <div id="host-note"></div>
                 <button id="start-multiplayer-btn" class="menu-action multiplayer hidden" type="button">Start Game</button>
@@ -958,9 +974,7 @@
         </div>
 
         <div class="controls">
-            <!-- NEW ROLL FOR FIRST BUTTON -->
             <button id="roll-off-btn" class="action-btn hidden" style="background-color: #e67e22; color: white;">Roll For First</button>
-            
             <button id="roll-btn" class="action-btn" disabled>Roll Dice</button>
             <button id="bank-all-btn" class="action-btn" disabled style="background-color: #8e44ad; color: white;">Bank All</button>
             <button id="bank-btn" class="action-btn" disabled>Bank Score</button>
@@ -971,7 +985,7 @@
     <div id="scorecard-panel" class="hidden">
         <div id="game-header">
             <svg class="header-die" viewBox="0 0 40 40"><path d="M 5,10 C 5,5 5,5 10,5 H 30 C 35,5 35,5 35,10 V 30 C 35,35 35,35 30,35 H 10 C 5,35 5,35 5,30 Z M 13,13 A 3,3 0 1,1 19,13 A 3,3 0 1,1 13,13 M 23,23 A 3,3 0 1,1 29,23 A 3,3 0 1,1 23,23"/></svg>
-            10,000 DICE
+            <span id="game-header-text">10,000 DICE</span>
             <svg class="header-die" viewBox="0 0 40 40"><path d="M 5,10 C 5,5 5,5 10,5 H 30 C 35,5 35,5 35,10 V 30 C 35,35 35,35 30,35 H 10 C 5,35 5,35 5,30 Z M 13,13 A 3,3 0 1,1 19,13 A 3,3 0 1,1 13,13 M 23,23 A 3,3 0 1,1 29,23 A 3,3 0 1,1 23,23 M 13,23 A 3,3 0 1,1 19,23 A 3,3 0 1,1 13,23 M 23,13 A 3,3 0 1,1 29,13 A 3,3 0 1,1 23,13"/></svg>
         </div>
         <div id="scorecard-container">
@@ -1024,7 +1038,6 @@
             console.error('Socket.IO connection failed:', err);
         }
 
-        // Keep the page/menu usable even if Socket.IO fails to load.
         if (!socket) {
             socket = {
                 on: function () {},
@@ -1051,6 +1064,7 @@
         const scorecardPanel = document.getElementById('scorecard-panel');
         const deviceBadge = document.getElementById('device-badge');
         const leaveGameBtn = document.getElementById('leave-game-btn');
+        const gameHeaderText = document.getElementById('game-header-text');
 
         const mainMenu = document.getElementById('main-menu');
         const soloMenu = document.getElementById('solo-menu');
@@ -1063,6 +1077,7 @@
         const leaveLobbyBtn = document.getElementById('leave-lobby-btn');
         const multiplayerError = document.getElementById('multiplayer-error');
         const startMultiplayerBtn = document.getElementById('start-multiplayer-btn');
+        const lobbyRulesSelect = document.getElementById('lobby-rules');
 
         const rollOffOverlay = document.getElementById('roll-off-overlay');
         const rollOffMsg = document.getElementById('roll-off-msg');
@@ -1078,7 +1093,6 @@
         let scatterPositions = [ {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0} ];
         let diceRotations = [ {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0}, {x:0, y:0} ];
         
-        // NEW: Track chronological order of held dice
         let rackSequence = [];
 
         function updateDeviceBadge() {
@@ -1088,7 +1102,6 @@
                 deviceBadge.textContent = '👀 Watching';
             }
 
-            // Show the leave button for BOTH local and multiplayer games
             const isGameActive = (latestState?.mode === 'multiplayer' || latestState?.mode === 'local') &&
                 ['PLAYING', 'GAME_OVER', 'ABANDONED', 'ROLL_OFF'].includes(latestState?.status);
             leaveGameBtn.classList.toggle('hidden', !isGameActive);
@@ -1177,15 +1190,21 @@
             renderLobbyPlayers(data.players);
 
             if (lobbyIsHost) {
+                lobbyRulesSelect.disabled = false;
                 hostNote.textContent = count < 2
                     ? 'You are the host. At least 2 players are needed to start.'
                     : 'You are the host. Start when everyone is ready.';
                 startMultiplayerBtn.classList.remove('hidden');
                 startMultiplayerBtn.disabled = count < 2;
             } else {
+                lobbyRulesSelect.disabled = true;
                 hostNote.textContent = 'Waiting for the host to start the game.';
                 startMultiplayerBtn.classList.add('hidden');
                 startMultiplayerBtn.disabled = true;
+            }
+            
+            if (data.ruleset) {
+                lobbyRulesSelect.value = data.ruleset;
             }
         }
 
@@ -1197,7 +1216,8 @@
             const rawName = document.getElementById('solo-name').value.trim();
             const name = (rawName || 'PLAYER').toUpperCase();
             const cpuCount = Number(document.getElementById('cpu-count').value) || 1;
-            socket.emit('start-local-game', { name, cpuCount });
+            const ruleset = document.getElementById('solo-rules').value;
+            socket.emit('start-local-game', { name, cpuCount, ruleset });
         });
 
         document.getElementById('join-multiplayer-btn').addEventListener('click', () => {
@@ -1209,6 +1229,12 @@
             const name = (rawName || 'PLAYER').toUpperCase();
             multiplayerError.textContent = '';
             socket.emit('join-multiplayer', { name });
+        });
+
+        lobbyRulesSelect.addEventListener('change', (e) => {
+            if (lobbyIsHost) {
+                socket.emit('change-ruleset', e.target.value);
+            }
         });
 
         leaveLobbyBtn.addEventListener('click', () => {
@@ -1311,7 +1337,6 @@
         rollOffBtn.onclick = () => { socket.emit('roll-off'); };
         document.getElementById('play-again-btn').onclick = () => { socket.emit('play-again'); };
         
-        // Connect the new Roll-Off UI button
         doRollOffBtn.onclick = () => { 
             doRollOffBtn.disabled = true;
             socket.emit('roll-off'); 
@@ -1447,14 +1472,12 @@
             let cw = container.clientWidth || 600;
             let ch = container.clientHeight || 400;
 
-            // --- 3D ROLL-OFF DISPLAY RULES ---
             if (state.status === 'ROLL_OFF') {
                 const activeCount = state.playersData.length;
                 const slotW = 80 * looseScale;
                 const gap = 30;
                 const totalW = (activeCount * slotW) + ((activeCount - 1) * gap);
                 
-                // Line them perfectly up in the center of the display
                 const startX = (cw - totalW) / 2;
                 const startY = (ch - slotW) / 2;
 
@@ -1465,19 +1488,14 @@
                         sceneElements[i].style.top = startY + 'px';
                         sceneElements[i].style.transform = `scale(${looseScale})`;
                     } else {
-                        // Hide dice for players who were eliminated in a tie-breaker
                         sceneElements[i].style.display = 'none';
                     }
                 }
                 return;
             }
 
-            // --- REGULAR GAMEPLAY DISPLAY RULES ---
-            
-            // Clean up the sequence: Remove dice that are no longer held/locked
             rackSequence = rackSequence.filter(i => state.heldDice[i] || state.lockedDice[i]);
             
-            // Add newly held/locked dice to the end of the sequence
             for (let i = 0; i < 6; i++) {
                 if (state.heldDice[i] || state.lockedDice[i]) {
                     if (!rackSequence.includes(i)) {
@@ -1490,7 +1508,6 @@
                 sceneElements[i].style.display = 'block'; 
                 
                 if (state.heldDice[i] || state.lockedDice[i]) {
-                    // Position die in the chronological slot order
                     let slotIndex = rackSequence.indexOf(i);
                     let pos = getRackPos(slotIndex);
                     sceneElements[i].style.left = pos.x + 'px';
@@ -1556,6 +1573,11 @@
             updateDeviceBadge();
             msgEl.textContent = state.message;
             msgEl.style.color = state.isLastTurn ? "#FFD700" : "white";
+            
+            if (gameHeaderText) {
+                gameHeaderText.textContent = state.ruleset === 'moms' ? "MOM'S RULES" : "10,000 DICE";
+            }
+
             if(state.status === 'GAME_OVER') {
                 msgEl.style.color = state.message.includes('TIE') ? "#FFD700" : "#4CAF50";
             } else if (state.status === 'ABANDONED') {
@@ -1622,7 +1644,6 @@
                 });
             }
 
-            // --- BUTTON DISPLAY LOGIC ---
             const playAgainBtn = document.getElementById('play-again-btn');
 
             if (state.status === 'ROLL_OFF') {
@@ -1714,7 +1735,6 @@
             }
         });
 
-        // --- SPECIFIC 3D ROLL-OFF DIE ANIMATION ---
         socket.on('roll-off-dice-rolled', (data) => {
             let i = data.playerIndex;
             let val = data.val;
@@ -1770,7 +1790,6 @@
         });
 
         socket.on('new-turn', () => {
-            // Reset chronological tracking whenever a fresh set of 6 dice is rolled
             rackSequence = [];
             for (let i = 0; i < 6; i++) { generateScatterPosition(i); }
         });
